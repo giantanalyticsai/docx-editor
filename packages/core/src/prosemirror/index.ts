@@ -85,6 +85,7 @@ export {
   setIndentLeft,
   setIndentRight,
   setIndentFirstLine,
+  toggleParagraphBottomBorder,
   addTabStop,
   removeTabStop,
   toggleBulletList,

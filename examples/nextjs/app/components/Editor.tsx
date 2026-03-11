@@ -207,7 +207,7 @@ export function Editor() {
             setStatus(`Error: ${error.message}`);
           }}
           onFontsLoaded={() => console.log('Fonts loaded')}
-          showToolbar={true}
+          toolbar="compact"
           showRuler={true}
           showZoomControl={true}
           showPageNumbers={false}

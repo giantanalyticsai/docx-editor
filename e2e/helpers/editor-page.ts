@@ -54,6 +54,7 @@ export class EditorPage {
   // Main locators
   readonly editor: Locator;
   readonly toolbar: Locator;
+  readonly ribbon: Locator;
   readonly variablePanel: Locator;
   readonly zoomControl: Locator;
 
@@ -76,6 +77,7 @@ export class EditorPage {
     // Main component locators
     this.editor = page.locator('[data-testid="docx-editor"]');
     this.toolbar = page.locator('[data-testid="toolbar"]');
+    this.ribbon = page.locator('[data-testid="ribbon"]');
     this.variablePanel = page.locator('.variable-panel');
     this.zoomControl = page.locator('.zoom-control');
 
@@ -101,7 +103,7 @@ export class EditorPage {
    * Navigate to the editor page
    */
   async goto(): Promise<void> {
-    await this.page.goto('/');
+    await this.page.goto('/?toolbar=compact');
   }
 
   /**
@@ -129,6 +131,46 @@ export class EditorPage {
 
     // Wait for document to load
     await this.waitForReady();
+  }
+
+  // ============================================================================
+  // RIBBON
+  // ============================================================================
+
+  /**
+   * Click a ribbon button by its id (data-testid="ribbon-{id}")
+   */
+  async clickRibbonButton(id: string): Promise<void> {
+    await this.page.getByTestId(`ribbon-${id}`).click();
+    await this.page.waitForTimeout(100);
+  }
+
+  /**
+   * Toggle Local Clipboard in the ribbon
+   */
+  async toggleLocalClipboard(): Promise<void> {
+    await this.clickRibbonButton('localClipboard');
+  }
+
+  /**
+   * Paste via ribbon
+   */
+  async pasteViaRibbon(): Promise<void> {
+    await this.clickRibbonButton('paste');
+  }
+
+  /**
+   * Copy via ribbon
+   */
+  async copyViaRibbon(): Promise<void> {
+    await this.clickRibbonButton('copy');
+  }
+
+  /**
+   * Cut via ribbon
+   */
+  async cutViaRibbon(): Promise<void> {
+    await this.clickRibbonButton('cut');
   }
 
   // ============================================================================
@@ -257,7 +299,14 @@ export class EditorPage {
       range.setStart(firstTextNode, 0);
       range.setEnd(lastTextNode, lastTextNode.textContent?.length || 0);
       selection.addRange(range);
+
+      // Focus and dispatch selection change so ProseMirror syncs the selection
+      if (contentArea instanceof HTMLElement) {
+        contentArea.focus();
+      }
+      document.dispatchEvent(new Event('selectionchange'));
     });
+    await this.page.waitForTimeout(100);
   }
 
   /**

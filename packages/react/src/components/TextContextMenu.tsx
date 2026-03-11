@@ -5,7 +5,8 @@
  * Shows Cut, Copy, Paste, and other text editing options.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 // ============================================================================
 // TYPES
@@ -21,7 +22,12 @@ export type TextContextAction =
   | 'pasteAsPlainText'
   | 'selectAll'
   | 'delete'
-  | 'separator';
+  | 'separator'
+  | 'spellcheckSuggestions'
+  | 'spellcheckReplace'
+  | 'spellcheckIgnore'
+  | 'spellcheckAddToDictionary'
+  | 'spellcheckLoading';
 
 /**
  * Menu item configuration
@@ -31,12 +37,16 @@ export interface TextContextMenuItem {
   action: TextContextAction;
   /** Display label */
   label: string;
+  /** Optional action value (used for spellcheck replacements) */
+  value?: string;
   /** Keyboard shortcut hint */
   shortcut?: string;
   /** Whether the item is disabled */
   disabled?: boolean;
   /** Whether to show divider after this item */
   dividerAfter?: boolean;
+  /** Submenu items */
+  submenu?: TextContextMenuItem[];
 }
 
 /**
@@ -54,7 +64,7 @@ export interface TextContextMenuProps {
   /** Whether clipboard has content (enables paste) */
   hasClipboardContent?: boolean;
   /** Callback when an action is selected */
-  onAction: (action: TextContextAction) => void;
+  onAction: (action: TextContextAction, value?: string) => void;
   /** Callback when menu is closed */
   onClose: () => void;
   /** Custom menu items (overrides default) */
@@ -74,7 +84,7 @@ export interface UseTextContextMenuOptions {
   /** Container element ref */
   containerRef?: React.RefObject<HTMLElement>;
   /** Callback when an action is triggered */
-  onAction?: (action: TextContextAction) => void;
+  onAction?: (action: TextContextAction, value?: string) => void;
 }
 
 /**
@@ -92,7 +102,7 @@ export interface UseTextContextMenuReturn {
   /** Close the context menu */
   closeMenu: () => void;
   /** Handle action selection */
-  handleAction: (action: TextContextAction) => void;
+  handleAction: (action: TextContextAction, value?: string) => void;
   /** Context menu event handler for onContextMenu prop */
   onContextMenu: (event: React.MouseEvent) => void;
 }
@@ -192,6 +202,12 @@ function getActionIcon(action: TextContextAction): React.ReactNode {
       return <DeleteIcon />;
     case 'selectAll':
       return <SelectAllIcon />;
+    case 'spellcheckReplace':
+    case 'spellcheckIgnore':
+    case 'spellcheckAddToDictionary':
+    case 'spellcheckLoading':
+    case 'spellcheckSuggestions':
+      return null;
     default:
       return null;
   }
@@ -206,6 +222,8 @@ interface MenuItemComponentProps {
   onClick: () => void;
   isHighlighted: boolean;
   onMouseEnter: () => void;
+  buttonRef?: (el: HTMLButtonElement | null) => void;
+  showSubmenuIndicator?: boolean;
 }
 
 const MenuItemComponent: React.FC<MenuItemComponentProps> = ({
@@ -213,6 +231,8 @@ const MenuItemComponent: React.FC<MenuItemComponentProps> = ({
   onClick,
   isHighlighted,
   onMouseEnter,
+  buttonRef,
+  showSubmenuIndicator = false,
 }) => {
   if (item.action === 'separator') {
     return (
@@ -220,7 +240,7 @@ const MenuItemComponent: React.FC<MenuItemComponentProps> = ({
         className="docx-text-context-menu-separator"
         style={{
           height: '1px',
-          backgroundColor: 'var(--doc-border)',
+          backgroundColor: 'var(--doc-border, rgba(15, 23, 42, 0.12))',
           margin: '4px 12px',
         }}
       />
@@ -237,6 +257,9 @@ const MenuItemComponent: React.FC<MenuItemComponentProps> = ({
         disabled={item.disabled}
         role="menuitem"
         aria-disabled={item.disabled}
+        aria-haspopup={showSubmenuIndicator ? 'menu' : undefined}
+        aria-expanded={showSubmenuIndicator ? isHighlighted : undefined}
+        ref={buttonRef}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -244,7 +267,10 @@ const MenuItemComponent: React.FC<MenuItemComponentProps> = ({
           width: '100%',
           padding: '8px 12px',
           border: 'none',
-          background: isHighlighted && !item.disabled ? 'var(--doc-primary-light)' : 'transparent',
+          background:
+            isHighlighted && !item.disabled
+              ? 'var(--doc-context-menu-hover, rgba(15, 23, 42, 0.08))'
+              : 'transparent',
           cursor: item.disabled ? 'not-allowed' : 'pointer',
           fontSize: '13px',
           color: item.disabled ? 'var(--doc-text-subtle)' : 'var(--doc-text)',
@@ -256,6 +282,10 @@ const MenuItemComponent: React.FC<MenuItemComponentProps> = ({
           style={{
             display: 'flex',
             color: item.disabled ? 'var(--doc-border)' : 'var(--doc-text-muted)',
+            width: 16,
+            height: 16,
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
         >
           {getActionIcon(item.action)}
@@ -272,13 +302,25 @@ const MenuItemComponent: React.FC<MenuItemComponentProps> = ({
             {item.shortcut}
           </span>
         )}
+        {showSubmenuIndicator && (
+          <span
+            aria-hidden="true"
+            style={{
+              fontSize: '12px',
+              color: 'var(--doc-text-subtle)',
+              marginLeft: '4px',
+            }}
+          >
+            ›
+          </span>
+        )}
       </button>
       {item.dividerAfter && (
         <div
           className="docx-text-context-menu-separator"
           style={{
             height: '1px',
-            backgroundColor: 'var(--doc-border)',
+            backgroundColor: 'var(--doc-border, rgba(15, 23, 42, 0.12))',
             margin: '4px 12px',
           }}
         />
@@ -303,7 +345,17 @@ export const TextContextMenu: React.FC<TextContextMenuProps> = ({
   className = '',
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
+  const submenuRef = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const [adjustedPosition, setAdjustedPosition] = useState(position);
+  const [submenuState, setSubmenuState] = useState<{
+    parentIndex: number;
+    position: { x: number; y: number };
+    anchorRect: DOMRect;
+  } | null>(null);
+  const [submenuPosition, setSubmenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const [submenuHighlightedIndex, setSubmenuHighlightedIndex] = useState(0);
 
   // Build menu items with disabled states
   const menuItems = (items || DEFAULT_MENU_ITEMS).map((item) => {
@@ -333,7 +385,12 @@ export const TextContextMenu: React.FC<TextContextMenuProps> = ({
     if (!isOpen) return;
 
     const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      const targetNode = e.target as Node;
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(targetNode) &&
+        (!submenuRef.current || !submenuRef.current.contains(targetNode))
+      ) {
         onClose();
       }
     };
@@ -348,6 +405,20 @@ export const TextContextMenu: React.FC<TextContextMenuProps> = ({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isOpen, onClose]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setSubmenuState(null);
+      setSubmenuPosition(null);
+      setSubmenuHighlightedIndex(0);
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (submenuState) {
+      setSubmenuHighlightedIndex(0);
+    }
+  }, [submenuState]);
 
   // Handle keyboard navigation
   useEffect(() => {
@@ -385,7 +456,22 @@ export const TextContextMenu: React.FC<TextContextMenuProps> = ({
           e.preventDefault();
           const item = navigableItems[highlightedIndex];
           if (item && !item.disabled) {
-            onAction(item.action);
+            if (item.submenu && item.submenu.length > 0) {
+              const menuIndex = menuItems.findIndex((menuItem) => menuItem === item);
+              if (menuIndex >= 0) {
+                const anchor = itemRefs.current[menuIndex];
+                if (anchor) {
+                  const rect = anchor.getBoundingClientRect();
+                  setSubmenuState({
+                    parentIndex: menuIndex,
+                    position: { x: rect.right + 2, y: rect.top - 2 },
+                    anchorRect: rect,
+                  });
+                }
+              }
+              break;
+            }
+            onAction(item.action, item.value);
             onClose();
           }
           break;
@@ -394,7 +480,7 @@ export const TextContextMenu: React.FC<TextContextMenuProps> = ({
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, highlightedIndex, navigableItems, onAction, onClose]);
+  }, [isOpen, highlightedIndex, navigableItems, menuItems, onAction, onClose]);
 
   // Reset highlighted index when menu opens
   useEffect(() => {
@@ -404,75 +490,212 @@ export const TextContextMenu: React.FC<TextContextMenuProps> = ({
   }, [isOpen]);
 
   // Position menu to stay within viewport
-  const getMenuStyle = useCallback((): React.CSSProperties => {
-    const menuWidth = 220;
-    const menuHeight = menuItems.length * 36 + 16;
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    const menu = menuRef.current;
+    if (!menu || typeof window === 'undefined') return;
 
+    const rect = menu.getBoundingClientRect();
+    const padding = 8;
     let x = position.x;
     let y = position.y;
 
-    if (typeof window !== 'undefined') {
-      if (x + menuWidth > window.innerWidth) {
-        x = window.innerWidth - menuWidth - 10;
-      }
-      if (y + menuHeight > window.innerHeight) {
-        y = window.innerHeight - menuHeight - 10;
-      }
-      if (x < 10) x = 10;
-      if (y < 10) y = 10;
+    if (x + rect.width > window.innerWidth - padding) {
+      x = window.innerWidth - rect.width - padding;
     }
+    if (y + rect.height > window.innerHeight - padding) {
+      y = window.innerHeight - rect.height - padding;
+    }
+    if (x < padding) x = padding;
+    if (y < padding) y = padding;
 
+    if (x !== adjustedPosition.x || y !== adjustedPosition.y) {
+      setAdjustedPosition({ x, y });
+    }
+  }, [isOpen, position.x, position.y, adjustedPosition.x, adjustedPosition.y]);
+
+  useEffect(() => {
+    if (submenuState) {
+      setSubmenuPosition(submenuState.position);
+    }
+  }, [submenuState]);
+
+  useLayoutEffect(() => {
+    if (!submenuState || !submenuRef.current || typeof window === 'undefined') return;
+
+    const rect = submenuRef.current.getBoundingClientRect();
+    const padding = 8;
+    let x = submenuState.position.x;
+    let y = submenuState.position.y;
+
+    if (x + rect.width > window.innerWidth - padding) {
+      x = submenuState.anchorRect.left - rect.width - 2;
+    }
+    if (x < padding) x = padding;
+    if (y + rect.height > window.innerHeight - padding) {
+      y = window.innerHeight - rect.height - padding;
+    }
+    if (y < padding) y = padding;
+
+    if (!submenuPosition || submenuPosition.x !== x || submenuPosition.y !== y) {
+      setSubmenuPosition({ x, y });
+    }
+  }, [submenuState, submenuPosition]);
+
+  const getMenuStyle = useCallback((): React.CSSProperties => {
     return {
       position: 'fixed',
-      top: y,
-      left: x,
-      minWidth: menuWidth,
-      background: 'white',
-      border: '1px solid var(--doc-border-light)',
+      top: adjustedPosition.y,
+      left: adjustedPosition.x,
+      minWidth: 220,
+      maxWidth: 320,
+      background: '#ffffff',
+      border: '1px solid rgba(0, 0, 0, 0.12)',
       borderRadius: '8px',
-      boxShadow: '0 2px 10px rgba(0, 0, 0, 0.15)',
-      zIndex: 10000,
-      padding: '4px 0',
+      boxShadow: '0 8px 24px rgba(15, 23, 42, 0.18)',
+      zIndex: 20000,
+      padding: '6px 0',
       overflow: 'hidden',
+      fontFamily: '"Segoe UI", system-ui, -apple-system, sans-serif',
     };
-  }, [position, menuItems.length]);
+  }, [adjustedPosition.x, adjustedPosition.y]);
 
-  const handleItemClick = (item: TextContextMenuItem) => {
+  const getSubmenuStyle = useCallback((): React.CSSProperties => {
+    const position = submenuPosition ?? submenuState?.position ?? { x: 0, y: 0 };
+    return {
+      position: 'fixed',
+      top: position.y,
+      left: position.x,
+      minWidth: 200,
+      maxWidth: 300,
+      background: '#ffffff',
+      border: '1px solid rgba(0, 0, 0, 0.12)',
+      borderRadius: '8px',
+      boxShadow: '0 8px 24px rgba(15, 23, 42, 0.18)',
+      zIndex: 20001,
+      padding: '6px 0',
+      overflow: 'hidden',
+      fontFamily: '"Segoe UI", system-ui, -apple-system, sans-serif',
+    };
+  }, [submenuPosition, submenuState?.position]);
+
+  const handleItemClick = (item: TextContextMenuItem, index: number) => {
     if (item.disabled) return;
-    onAction(item.action);
+    if (item.submenu && item.submenu.length > 0) {
+      const anchor = itemRefs.current[index];
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      setSubmenuState({
+        parentIndex: index,
+        position: { x: rect.right + 2, y: rect.top - 2 },
+        anchorRect: rect,
+      });
+      return;
+    }
+    onAction(item.action, item.value);
     onClose();
   };
 
   if (!isOpen) return null;
 
-  return (
-    <div
-      ref={menuRef}
-      className={`docx-text-context-menu ${className}`}
-      style={getMenuStyle()}
-      role="menu"
-      aria-label="Text editing menu"
-    >
-      {menuItems.map((item, index) => {
-        // Find the index in navigable items for highlighting
-        const navigableIndex = navigableItems.findIndex((ni) => ni === item);
+  const submenuItems = submenuState ? (menuItems[submenuState.parentIndex]?.submenu ?? []) : [];
 
-        return (
-          <MenuItemComponent
-            key={`${item.action}-${index}`}
-            item={item}
-            onClick={() => handleItemClick(item)}
-            isHighlighted={navigableIndex === highlightedIndex}
-            onMouseEnter={() => {
-              if (navigableIndex >= 0 && !item.disabled) {
-                setHighlightedIndex(navigableIndex);
-              }
-            }}
-          />
-        );
-      })}
-    </div>
+  const menuContent = (
+    <>
+      <div
+        ref={menuRef}
+        className={`docx-text-context-menu ${className}`}
+        style={getMenuStyle()}
+        role="menu"
+        aria-label="Text editing menu"
+      >
+        {menuItems.map((item, index) => {
+          // Find the index in navigable items for highlighting
+          const navigableIndex = navigableItems.findIndex((ni) => ni === item);
+          const showSubmenuIndicator = !!item.submenu && item.submenu.length > 0;
+          const isSubmenuOpen = submenuState?.parentIndex === index;
+          const isHighlighted = navigableIndex === highlightedIndex || isSubmenuOpen;
+
+          return (
+            <MenuItemComponent
+              key={`${item.action}-${index}`}
+              item={item}
+              onClick={() => handleItemClick(item, index)}
+              isHighlighted={isHighlighted}
+              onMouseEnter={() => {
+                if (navigableIndex >= 0 && !item.disabled) {
+                  setHighlightedIndex(navigableIndex);
+                }
+                if (showSubmenuIndicator) {
+                  const anchor = itemRefs.current[index];
+                  if (!anchor) return;
+                  const rect = anchor.getBoundingClientRect();
+                  setSubmenuState({
+                    parentIndex: index,
+                    position: { x: rect.right + 2, y: rect.top - 2 },
+                    anchorRect: rect,
+                  });
+                } else if (submenuState) {
+                  setSubmenuState(null);
+                }
+              }}
+              buttonRef={(el) => {
+                itemRefs.current[index] = el;
+              }}
+              showSubmenuIndicator={showSubmenuIndicator}
+            />
+          );
+        })}
+      </div>
+      {submenuState && submenuItems.length > 0 && (
+        <div
+          ref={submenuRef}
+          className="docx-text-context-menu docx-text-context-menu-submenu"
+          style={getSubmenuStyle()}
+          role="menu"
+          aria-label="Spellcheck suggestions"
+        >
+          {submenuItems.map((item, index) => {
+            const isHighlighted = index === submenuHighlightedIndex;
+            if (item.action === 'separator') {
+              return (
+                <div
+                  key={`submenu-separator-${index}`}
+                  className="docx-text-context-menu-separator"
+                  style={{
+                    height: '1px',
+                    backgroundColor: 'var(--doc-border, rgba(15, 23, 42, 0.12))',
+                    margin: '4px 12px',
+                  }}
+                />
+              );
+            }
+            return (
+              <MenuItemComponent
+                key={`submenu-${item.action}-${index}`}
+                item={item}
+                onClick={() => {
+                  if (item.disabled) return;
+                  onAction(item.action, item.value);
+                  onClose();
+                }}
+                isHighlighted={isHighlighted}
+                onMouseEnter={() => {
+                  setSubmenuHighlightedIndex(index);
+                }}
+              />
+            );
+          })}
+        </div>
+      )}
+    </>
   );
+
+  if (typeof document === 'undefined') {
+    return menuContent;
+  }
+
+  return createPortal(menuContent, document.body);
 };
 
 // ============================================================================
@@ -536,7 +759,7 @@ export function useTextContextMenu(
    * Handle action selection
    */
   const handleAction = useCallback(
-    (action: TextContextAction) => {
+    (action: TextContextAction, value?: string) => {
       closeMenu();
 
       // Execute the action
@@ -569,9 +792,16 @@ export function useTextContextMenu(
         case 'selectAll':
           document.execCommand('selectAll');
           break;
+        case 'spellcheckReplace':
+        case 'spellcheckSuggestions':
+        case 'spellcheckIgnore':
+        case 'spellcheckAddToDictionary':
+        case 'spellcheckLoading':
+        case 'separator':
+          break;
       }
 
-      onAction?.(action);
+      onAction?.(action, value);
     },
     [closeMenu, onAction]
   );
@@ -627,6 +857,11 @@ export function getTextActionLabel(action: TextContextAction): string {
     selectAll: 'Select All',
     delete: 'Delete',
     separator: '',
+    spellcheckSuggestions: 'Suggestions',
+    spellcheckReplace: 'Replace',
+    spellcheckIgnore: 'Ignore',
+    spellcheckAddToDictionary: 'Add to Dictionary',
+    spellcheckLoading: 'Loading suggestions...',
   };
   return labels[action];
 }
@@ -643,6 +878,11 @@ export function getTextActionShortcut(action: TextContextAction): string {
     selectAll: 'Ctrl+A',
     delete: 'Del',
     separator: '',
+    spellcheckSuggestions: '',
+    spellcheckReplace: '',
+    spellcheckIgnore: '',
+    spellcheckAddToDictionary: '',
+    spellcheckLoading: '',
   };
   return shortcuts[action];
 }

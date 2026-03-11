@@ -4,6 +4,8 @@ import {
   type DocxEditorRef,
   createEmptyDocument,
   type Document,
+  PluginHost,
+  createSpellcheckPlugin,
 } from '@eigenpal/docx-js-editor';
 import { ExampleSwitcher } from '../../shared/ExampleSwitcher';
 import { GitHubBadge } from '../../shared/GitHubBadge';
@@ -347,6 +349,32 @@ function MobileMenu({
 }
 
 export function App() {
+  const queryParams = useMemo(() => new URLSearchParams(window.location.search), []);
+  const toolbarParam = queryParams.get('toolbar');
+  const toolbar =
+    toolbarParam === 'compact' || toolbarParam === 'ribbon' ? toolbarParam : undefined;
+  const readOnlyFromQuery =
+    queryParams.get('readOnly') === '1' || queryParams.get('readOnly') === 'true';
+  const showToolbarWhenReadOnly =
+    queryParams.get('showToolbarWhenReadOnly') !== '0' &&
+    queryParams.get('showToolbarWhenReadOnly') !== 'false';
+  const spellcheckParam = queryParams.get('spellcheck');
+  const spellcheckOverlayParam = queryParams.get('spellcheckOverlay');
+  const disableSpellcheck =
+    spellcheckParam === '0' ||
+    spellcheckParam === 'false' ||
+    spellcheckParam === 'off' ||
+    queryParams.get('disableSpellcheck') === '1' ||
+    queryParams.get('disableSpellcheck') === 'true';
+  const disableSpellcheckOverlay =
+    spellcheckOverlayParam === '0' ||
+    spellcheckOverlayParam === 'false' ||
+    spellcheckOverlayParam === 'off';
+  const spellcheck = useMemo(
+    () => createSpellcheckPlugin({ renderOverlay: !disableSpellcheckOverlay }),
+    [disableSpellcheckOverlay]
+  );
+  const plugins = disableSpellcheck ? [] : [spellcheck];
   const randomAuthor = useMemo(
     () => `Docx Editor User ${Math.floor(Math.random() * 900) + 100}`,
     []
@@ -356,7 +384,7 @@ export function App() {
   const [documentBuffer, setDocumentBuffer] = useState<ArrayBuffer | null>(null);
   const [fileName, setFileName] = useState<string>('docx-editor-demo.docx');
   const [status, setStatus] = useState<string>('');
-  const [readOnly, setReadOnly] = useState(false);
+  const [readOnly, setReadOnly] = useState(readOnlyFromQuery);
   const { zoom: autoZoom, isMobile } = useResponsiveLayout();
 
   useEffect(() => {
@@ -486,21 +514,24 @@ export function App() {
       )}
 
       <main style={styles.main}>
-        <DocxEditor
-          ref={editorRef}
-          document={documentBuffer ? undefined : currentDocument}
-          documentBuffer={documentBuffer}
-          author={randomAuthor}
-          onChange={handleDocumentChange}
-          onError={handleError}
-          onFontsLoaded={handleFontsLoaded}
-          showToolbar={true}
-          showRuler={!isMobile}
-          showZoomControl={true}
-          showPageNumbers={false}
-          initialZoom={autoZoom}
-          readOnly={readOnly}
-        />
+        <PluginHost plugins={plugins}>
+          <DocxEditor
+            ref={editorRef}
+            document={documentBuffer ? undefined : currentDocument}
+            documentBuffer={documentBuffer}
+            author={randomAuthor}
+            onChange={handleDocumentChange}
+            onError={handleError}
+            onFontsLoaded={handleFontsLoaded}
+            toolbar={toolbar}
+            showToolbarWhenReadOnly={showToolbarWhenReadOnly}
+            showRuler={!isMobile}
+            showZoomControl={true}
+            showPageNumbers={false}
+            initialZoom={autoZoom}
+            readOnly={readOnly}
+          />
+        </PluginHost>
       </main>
     </div>
   );

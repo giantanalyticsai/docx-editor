@@ -60,6 +60,7 @@ export {
   removeList,
   setSpaceBefore,
   setSpaceAfter,
+  toggleParagraphBottomBorder,
   getParagraphAlignment,
   isInList,
   getListInfo,

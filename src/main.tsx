@@ -96,7 +96,7 @@ function App() {
         <DocxEditor
           documentBuffer={documentBuffer}
           author={randomAuthor}
-          showToolbar={true}
+          toolbar="compact"
           showZoomControl={true}
           showPageNumbers={true}
           onError={(error) => console.error('Editor error:', error)}
