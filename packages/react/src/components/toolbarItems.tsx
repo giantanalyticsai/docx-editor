@@ -449,7 +449,14 @@ export function useToolbarItems(options: UseToolbarItemsOptions): {
           disabled={disabled}
           items={[
             ...(showPrintButton && onPrint
-              ? [{ icon: 'print', label: 'Print', shortcut: 'Ctrl+P', onClick: onPrint } as MenuEntry]
+              ? [
+                  {
+                    icon: 'print',
+                    label: 'Print',
+                    shortcut: 'Ctrl+P',
+                    onClick: onPrint,
+                  } as MenuEntry,
+                ]
               : []),
             ...(onPageSetup
               ? [{ icon: 'settings', label: 'Page setup', onClick: onPageSetup } as MenuEntry]
