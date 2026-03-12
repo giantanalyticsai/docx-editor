@@ -98,7 +98,6 @@ function App() {
           author={randomAuthor}
           toolbar="compact"
           showZoomControl={true}
-          showPageNumbers={true}
           onError={(error) => console.error('Editor error:', error)}
         />
       </div>

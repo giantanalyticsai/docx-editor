@@ -208,7 +208,6 @@ export function Editor() {
           toolbar="compact"
           showRuler={true}
           showZoomControl={true}
-          showPageNumbers={false}
           initialZoom={1.0}
         />
       </main>

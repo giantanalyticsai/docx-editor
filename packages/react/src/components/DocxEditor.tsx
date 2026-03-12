@@ -32,6 +32,7 @@ import type {
 import { Toolbar, ToolbarButton, ToolbarSeparator } from './Toolbar';
 import type { SelectionFormatting, FormattingAction } from './toolbarTypes';
 import { RibbonToolbar } from './Ribbon';
+import { EditorToolbar } from './EditorToolbar';
 import { pointsToHalfPoints } from './ui/FontSizePicker';
 import { DocumentOutline } from './DocumentOutline';
 import { CommentsSidebar, type TrackedChangeEntry } from './CommentsSidebar';
@@ -258,6 +259,8 @@ export interface DocxEditorProps {
   onEditorViewReady?: (view: import('prosemirror-view').EditorView) => void;
   /** Theme for styling */
   theme?: Theme | null;
+  /** Whether to show toolbar (default: true) */
+  showToolbar?: boolean;
   /** Toolbar mode (default: 'compact'). */
   toolbar?: 'compact' | 'ribbon';
   /** Whether to show toolbar in read-only mode (default: false for compact, true for ribbon) */
@@ -324,6 +327,16 @@ export interface DocxEditorProps {
    * Passed from PluginHost to render plugin-specific overlays.
    */
   pluginOverlays?: ReactNode;
+  /** Custom logo/icon for the title bar */
+  renderLogo?: () => ReactNode;
+  /** Document name shown in the title bar */
+  documentName?: string;
+  /** Callback when document name changes */
+  onDocumentNameChange?: (name: string) => void;
+  /** Whether the document name is editable (default: true) */
+  documentNameEditable?: boolean;
+  /** Custom right-side actions for the title bar */
+  renderTitleBarRight?: () => ReactNode;
 }
 
 /**
@@ -433,6 +446,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     onError,
     onFontsLoaded: onFontsLoadedCallback,
     theme,
+    showToolbar = true,
     toolbar = 'compact',
     showToolbarWhenReadOnly,
     showZoomControl = true,
@@ -465,6 +479,11 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     onEditorViewReady,
     onRenderedDomContextReady,
     pluginOverlays,
+    renderLogo,
+    documentName,
+    onDocumentNameChange,
+    documentNameEditable = true,
+    renderTitleBarRight,
   },
   ref
 ) {
@@ -554,8 +573,12 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   // 'viewing' mode acts as read-only
   const readOnly = readOnlyProp || editingMode === 'viewing';
   const allowToolbarWhenReadOnly = showToolbarWhenReadOnly ?? toolbar === 'ribbon';
-  const shouldShowToolbar = toolbar !== undefined && (!readOnlyProp || allowToolbarWhenReadOnly);
+  const shouldShowToolbar =
+    showToolbar && toolbar !== undefined && (!readOnlyProp || allowToolbarWhenReadOnly);
   const isRibbon = toolbar === 'ribbon';
+  const hasTitleBar =
+    !!renderLogo || documentName !== undefined || renderTitleBarRight !== undefined;
+  const useEditorToolbar = !isRibbon && hasTitleBar;
   // Floating "add comment" button position (relative to scroll container, null = hidden)
   const [floatingCommentBtn, setFloatingCommentBtn] = useState<{
     top: number;
@@ -3099,6 +3122,27 @@ body { background: white; }
     position: 'relative',
   };
 
+  const toolbarChildren = (
+    <>
+      <ToolbarSeparator />
+      <ToolbarButton
+        onClick={handleToggleCommentsSidebar}
+        active={showCommentsSidebar}
+        title="Toggle comments sidebar"
+        ariaLabel="Toggle comments sidebar"
+      >
+        <MaterialSymbol name="comment" size={20} />
+      </ToolbarButton>
+      <ToolbarSeparator />
+      <EditingModeDropdown
+        mode={editingMode}
+        onModeChange={setEditingMode}
+        disabled={readOnlyProp}
+      />
+      {toolbarExtra}
+    </>
+  );
+
   // Render loading state
   if (state.isLoading) {
     return (
@@ -3227,53 +3271,91 @@ body { background: white; }
                       readOnly={readOnlyProp}
                     />
                   ) : (
-                    <Toolbar
-                      currentFormatting={state.selectionFormatting}
-                      onFormat={handleFormat}
-                      onUndo={undoActiveEditor}
-                      onRedo={redoActiveEditor}
-                      canUndo={true}
-                      canRedo={true}
-                      disabled={readOnly}
-                      documentStyles={history.state?.package.styles?.styles}
-                      theme={history.state?.package.theme || theme}
-                      showPrintButton={showPrintButton}
-                      onPrint={handleDirectPrint}
-                      showZoomControl={showZoomControl}
-                      zoom={state.zoom}
-                      onZoomChange={handleZoomChange}
-                      onRefocusEditor={focusActiveEditor}
-                      onInsertTable={handleInsertTable}
-                      showTableInsert={true}
-                      onInsertImage={handleInsertImageClick}
-                      onInsertPageBreak={handleInsertPageBreak}
-                      onInsertTOC={handleInsertTOC}
-                      imageContext={state.pmImageContext}
-                      onImageWrapType={handleImageWrapType}
-                      onImageTransform={handleImageTransform}
-                      onOpenImageProperties={handleOpenImageProperties}
-                      onPageSetup={handleOpenPageSetup}
-                      tableContext={state.pmTableContext}
-                      onTableAction={handleTableAction}
-                    >
-                      {/* Comment & Track Changes buttons */}
-                      <ToolbarSeparator />
-                      <ToolbarButton
-                        onClick={handleToggleCommentsSidebar}
-                        active={showCommentsSidebar}
-                        title="Toggle comments sidebar"
-                        ariaLabel="Toggle comments sidebar"
-                      >
-                        <MaterialSymbol name="comment" size={20} />
-                      </ToolbarButton>
-                      <ToolbarSeparator />
-                      <EditingModeDropdown
-                        mode={editingMode}
-                        onModeChange={setEditingMode}
-                        disabled={readOnlyProp}
-                      />
-                      {toolbarExtra}
-                    </Toolbar>
+                    <>
+                      {useEditorToolbar ? (
+                        <EditorToolbar
+                          currentFormatting={state.selectionFormatting}
+                          onFormat={handleFormat}
+                          onUndo={undoActiveEditor}
+                          onRedo={redoActiveEditor}
+                          canUndo={true}
+                          canRedo={true}
+                          disabled={readOnly}
+                          documentStyles={history.state?.package.styles?.styles}
+                          theme={history.state?.package.theme || theme}
+                          showPrintButton={showPrintButton}
+                          onPrint={handleDirectPrint}
+                          showZoomControl={showZoomControl}
+                          zoom={state.zoom}
+                          onZoomChange={handleZoomChange}
+                          onRefocusEditor={focusActiveEditor}
+                          onInsertTable={handleInsertTable}
+                          showTableInsert={true}
+                          onInsertImage={handleInsertImageClick}
+                          onInsertPageBreak={handleInsertPageBreak}
+                          onInsertTOC={handleInsertTOC}
+                          imageContext={state.pmImageContext}
+                          onImageWrapType={handleImageWrapType}
+                          onImageTransform={handleImageTransform}
+                          onOpenImageProperties={handleOpenImageProperties}
+                          onPageSetup={handleOpenPageSetup}
+                          tableContext={state.pmTableContext}
+                          onTableAction={handleTableAction}
+                        >
+                          <EditorToolbar.TitleBar>
+                            {renderLogo && (
+                              <EditorToolbar.Logo>{renderLogo()}</EditorToolbar.Logo>
+                            )}
+                            {documentName !== undefined && (
+                              <EditorToolbar.DocumentName
+                                value={documentName}
+                                onChange={onDocumentNameChange}
+                                editable={documentNameEditable}
+                              />
+                            )}
+                            {renderTitleBarRight && (
+                              <EditorToolbar.TitleBarRight>
+                                {renderTitleBarRight()}
+                              </EditorToolbar.TitleBarRight>
+                            )}
+                            <EditorToolbar.MenuBar />
+                          </EditorToolbar.TitleBar>
+                          <EditorToolbar.FormattingBar>{toolbarChildren}</EditorToolbar.FormattingBar>
+                        </EditorToolbar>
+                      ) : (
+                        <Toolbar
+                          currentFormatting={state.selectionFormatting}
+                          onFormat={handleFormat}
+                          onUndo={undoActiveEditor}
+                          onRedo={redoActiveEditor}
+                          canUndo={true}
+                          canRedo={true}
+                          disabled={readOnly}
+                          documentStyles={history.state?.package.styles?.styles}
+                          theme={history.state?.package.theme || theme}
+                          showPrintButton={showPrintButton}
+                          onPrint={handleDirectPrint}
+                          showZoomControl={showZoomControl}
+                          zoom={state.zoom}
+                          onZoomChange={handleZoomChange}
+                          onRefocusEditor={focusActiveEditor}
+                          onInsertTable={handleInsertTable}
+                          showTableInsert={true}
+                          onInsertImage={handleInsertImageClick}
+                          onInsertPageBreak={handleInsertPageBreak}
+                          onInsertTOC={handleInsertTOC}
+                          imageContext={state.pmImageContext}
+                          onImageWrapType={handleImageWrapType}
+                          onImageTransform={handleImageTransform}
+                          onOpenImageProperties={handleOpenImageProperties}
+                          onPageSetup={handleOpenPageSetup}
+                          tableContext={state.pmTableContext}
+                          onTableAction={handleTableAction}
+                        >
+                          {toolbarChildren}
+                        </Toolbar>
+                      )}
+                    </>
                   )}
 
                   {/* Horizontal Ruler - fixed with ribbon header */}

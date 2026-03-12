@@ -10,6 +10,7 @@
 | `mode`                    | `'editing' \| 'suggesting' \| 'viewing'`    | `'editing'`       | Editor mode — editing, suggesting (track changes), or viewing (read-only with toolbar) |
 | `onModeChange`            | `(mode: EditorMode) => void`                | —                 | Called when the user changes the editing mode                                          |
 | `readOnly`                | `boolean`                                   | `false`           | Read-only preview (toolbar hidden unless `showToolbarWhenReadOnly` is true)            |
+| `showToolbar`             | `boolean`                                   | `true`            | Show the toolbar area                                                                  |
 | `toolbar`                 | `'compact' \| 'ribbon'`                     | `'compact'`       | Toolbar mode. Defaults to compact; ribbon is opt-in                                    |
 | `showToolbarWhenReadOnly` | `boolean`                                   | —                 | Show toolbar in read-only (defaults to `true` for ribbon, `false` for compact)         |
 | `showRuler`               | `boolean`                                   | `false`           | Show horizontal & vertical rulers (acts as initial value unless controlled)            |
@@ -20,12 +21,18 @@
 | `showPageNumbers`         | `boolean`                                   | `true`            | Show page number indicator                                                             |
 | `enablePageNavigation`    | `boolean`                                   | `true`            | Enable interactive page navigation                                                     |
 | `pageNumberPosition`      | `string`                                    | `'bottom-center'` | Position of page number indicator                                                      |
+| `pageNumberVariant`       | `string`                                    | `'default'`       | Variant of page number indicator                                                       |
 | `showOutline`             | `boolean`                                   | `false`           | Show document outline sidebar (table of contents)                                      |
 | `showMarginGuides`        | `boolean`                                   | `false`           | Show page margin guide boundaries                                                      |
 | `marginGuideColor`        | `string`                                    | `'#c0c0c0'`       | Color for margin guides                                                                |
 | `initialZoom`             | `number`                                    | `1.0`             | Initial zoom level                                                                     |
 | `theme`                   | `Theme \| null`                             | —                 | Theme for styling                                                                      |
 | `toolbarExtra`            | `ReactNode`                                 | —                 | Custom toolbar items appended to the toolbar                                           |
+| `renderLogo`              | `() => ReactNode`                           | —                 | Custom logo in the title bar                                                           |
+| `documentName`            | `string`                                    | —                 | Editable document name in the title bar                                                |
+| `onDocumentNameChange`    | `(name: string) => void`                    | —                 | Called when the user edits the document name                                           |
+| `documentNameEditable`    | `boolean`                                   | `true`            | Whether the document name is editable                                                  |
+| `renderTitleBarRight`     | `() => ReactNode`                           | —                 | Custom right-side actions in the title bar                                             |
 | `placeholder`             | `ReactNode`                                 | —                 | Placeholder when no document is loaded                                                 |
 | `loadingIndicator`        | `ReactNode`                                 | —                 | Custom loading indicator                                                               |
 | `className`               | `string`                                    | —                 | Additional CSS class name                                                              |

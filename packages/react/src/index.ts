@@ -115,6 +115,16 @@ export {
   ToolbarSeparator,
 } from './components/Toolbar';
 export {
+  EditorToolbar,
+  type EditorToolbarProps,
+  type TitleBarProps,
+  type LogoProps,
+  type DocumentNameProps,
+  type TitleBarRightProps,
+  type FormattingBarProps,
+} from './components/EditorToolbar';
+export { FormattingBar } from './components/FormattingBar';
+export {
   ContextMenu,
   type ContextMenuProps,
   useContextMenu,
@@ -170,31 +180,6 @@ export {
 // ============================================================================
 
 export { ZoomControl, type ZoomControlProps } from './components/ui/ZoomControl';
-export {
-  PageNumberIndicator,
-  type PageNumberIndicatorProps,
-  type PageIndicatorPosition,
-  type PageIndicatorVariant,
-  formatPageOrdinal,
-  createPageFormat,
-  getPageProgress,
-  isFirstPage,
-  isLastPage,
-  calculateVisiblePage,
-  calculateScrollToPage,
-} from './components/ui/PageNumberIndicator';
-export {
-  PageNavigator,
-  type PageNavigatorProps,
-  type PageNavigatorPosition,
-  type PageNavigatorVariant,
-  parsePageInput,
-  isValidPageNumber,
-  clampPageNumber,
-  getNavigationShortcuts,
-  formatPageRange,
-  calculateProgress,
-} from './components/ui/PageNavigator';
 export { FontPicker, type FontPickerProps, type FontOption } from './components/ui/FontPicker';
 export { FontSizePicker, type FontSizePickerProps } from './components/ui/FontSizePicker';
 export {
