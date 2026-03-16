@@ -26,7 +26,7 @@ import type {
   TextBoxFragment,
 } from '../layout-engine/types';
 import { renderFragment } from './renderFragment';
-import { renderParagraphFragment, type FloatingImageInfo } from './renderParagraph';
+import { renderParagraphFragment } from './renderParagraph';
 import { renderTableFragment } from './renderTable';
 import { renderImageFragment } from './renderImage';
 import { renderTextBoxFragment } from './renderTextBox';
@@ -34,6 +34,7 @@ import type { BlockLookup } from './index';
 import type { BorderSpec } from '../types/document';
 import { borderToStyle } from '../utils/formatToStyle';
 import type { Theme } from '../types/document';
+import { measureParagraph, type FloatingImageZone } from '../layout-bridge/measuring';
 
 /**
  * Page-level floating image that has been extracted from paragraphs.
@@ -60,13 +61,17 @@ interface PageFloatingImage {
   pmStart?: number;
   /** ProseMirror end position */
   pmEnd?: number;
+  /** OOXML wrapText: which side(s) TEXT flows on */
+  wrapText?: 'bothSides' | 'left' | 'right' | 'largest';
+  /** Wrap type (square, tight, through, topAndBottom) */
+  wrapType?: string;
 }
 
 /**
  * Floating object exclusion rectangle used for text wrapping.
  */
 interface FloatingExclusionRect {
-  /** Which side: 'left' for left margin, 'right' for right margin */
+  /** Which side the IMAGE is on (for rendering): 'left' or 'right' */
   side: 'left' | 'right';
   /** X position relative to content area (0 = left edge of content) */
   x: number;
@@ -80,6 +85,10 @@ interface FloatingExclusionRect {
   distBottom: number;
   distLeft: number;
   distRight: number;
+  /** OOXML wrapText: which side(s) TEXT flows on */
+  wrapText?: 'bothSides' | 'left' | 'right' | 'largest';
+  /** Wrap type from DOCX (square, tight, through, topAndBottom) */
+  wrapType?: string;
 }
 
 /**
@@ -255,7 +264,7 @@ function applyFragmentStyles(
 /**
  * EMU to pixels conversion for floating image positioning
  */
-function emuToPixels(emu: number | undefined): number {
+export function emuToPixels(emu: number | undefined): number {
   if (emu === undefined) return 0;
   return Math.round((emu * 96) / 914400);
 }
@@ -272,7 +281,7 @@ export function isFloatingImageRun(run: ImageRun): boolean {
     return true;
   }
 
-  // Or explicit float display mode
+  // Or explicit float display mode (but not topAndBottom — those are block images)
   if (displayMode === 'float') {
     return true;
   }
@@ -360,6 +369,17 @@ function extractFloatingImagesFromParagraph(
       y = fragmentY;
     }
 
+    // Derive wrapText from cssFloat:
+    // cssFloat='left' → image floats left → text on right → wrapText='right'
+    // cssFloat='right' → image floats right → text on left → wrapText='left'
+    // cssFloat='none' or undefined → wrapText='bothSides' (default)
+    let wrapText: 'bothSides' | 'left' | 'right' | 'largest' = 'bothSides';
+    if (imgRun.cssFloat === 'left') {
+      wrapText = 'right';
+    } else if (imgRun.cssFloat === 'right') {
+      wrapText = 'left';
+    }
+
     floatingImages.push({
       src: imgRun.src,
       width: imgRun.width,
@@ -375,6 +395,8 @@ function extractFloatingImagesFromParagraph(
       distRight,
       pmStart: imgRun.pmStart,
       pmEnd: imgRun.pmEnd,
+      wrapText,
+      wrapType: imgRun.wrapType,
     });
   }
 
@@ -382,48 +404,49 @@ function extractFloatingImagesFromParagraph(
 }
 
 /**
- * Calculate exclusion zones for floating images on a page.
- * Used to determine which paragraphs need margin adjustments.
+ * Convert floating exclusion rectangles to per-image FloatingImageZone[]
+ * for the measurement system. Each rect becomes its own zone so
+ * lines at different Y positions get independently correct widths.
+ *
+ * wrapText controls which side(s) TEXT flows on:
+ *   'right'    → text only on right → image blocks left side (leftMargin)
+ *   'left'     → text only on left  → image blocks right side (rightMargin)
+ *   'bothSides'→ text on right of left-side images, left of right-side images
+ *   'largest'  → same as bothSides (simplified)
+ *
+ * topAndBottom → full-width exclusion (leftMargin = contentWidth → forces line skip)
  */
-function calculateExclusionZones(
+function rectsToFloatingZones(
   rects: FloatingExclusionRect[],
   contentWidth: number
-): FloatingImageInfo[] {
-  const result: FloatingImageInfo[] = [];
-
-  // Track the max extent on each side
-  let leftExtent = 0;
-  let rightExtent = 0;
-  let topBound = Infinity;
-  let bottomBound = 0;
-
-  for (const rect of rects) {
-    const rectLeft = rect.x - rect.distLeft;
+): FloatingImageZone[] {
+  return rects.map((rect) => {
     const rectRight = rect.x + rect.width + rect.distRight;
     const rectTop = rect.y - rect.distTop;
     const rectBottom = rect.y + rect.height + rect.distBottom;
 
-    if (rect.side === 'left') {
-      leftExtent = Math.max(leftExtent, rectRight);
+    let leftMargin = 0;
+    let rightMargin = 0;
+
+    const wt = rect.wrapText ?? 'bothSides';
+
+    if (wt === 'right') {
+      // Text flows on RIGHT only → image blocks the left side
+      leftMargin = rectRight;
+    } else if (wt === 'left') {
+      // Text flows on LEFT only → image blocks the right side
+      rightMargin = contentWidth - (rect.x - rect.distLeft);
     } else {
-      rightExtent = Math.max(rightExtent, contentWidth - rectLeft);
+      // bothSides / largest: use image position to determine which side it blocks
+      if (rect.side === 'left') {
+        leftMargin = rectRight;
+      } else {
+        rightMargin = contentWidth - (rect.x - rect.distLeft);
+      }
     }
 
-    topBound = Math.min(topBound, rectTop);
-    bottomBound = Math.max(bottomBound, rectBottom);
-  }
-
-  // Create a single exclusion zone that covers all floating images
-  if (leftExtent > 0 || rightExtent > 0) {
-    result.push({
-      leftMargin: leftExtent,
-      rightMargin: rightExtent,
-      topY: topBound === Infinity ? 0 : topBound,
-      bottomY: bottomBound,
-    });
-  }
-
-  return result;
+    return { leftMargin, rightMargin, topY: rectTop, bottomY: rectBottom };
+  });
 }
 
 /**
@@ -455,8 +478,9 @@ function renderFloatingImagesLayer(
 
     const img = doc.createElement('img');
     img.src = floatImg.src;
-    img.width = floatImg.width;
-    img.height = floatImg.height;
+    img.style.width = `${floatImg.width}px`;
+    img.style.height = `${floatImg.height}px`;
+    img.style.display = 'block';
     if (floatImg.alt) img.alt = floatImg.alt;
     if (floatImg.transform) img.style.transform = floatImg.transform;
 
@@ -719,6 +743,9 @@ export function renderPage(
           contentWidth
         );
         allFloatingImages.push(...extracted);
+
+        // Note: topAndBottom images are handled by measureParagraph as block images
+        // (they get their own line). No exclusion zones needed for them.
       }
     }
   }
@@ -735,6 +762,8 @@ export function renderPage(
       distBottom: img.distBottom,
       distLeft: img.distLeft,
       distRight: img.distRight,
+      wrapText: img.wrapText,
+      wrapType: img.wrapType,
     });
   }
 
@@ -772,8 +801,9 @@ export function renderPage(
     }
   }
 
-  // PHASE 2: Calculate exclusion zones from floating objects
-  const exclusionZones = calculateExclusionZones(floatingRects, contentWidth);
+  // PHASE 2: Convert floating rects to per-image measurement zones
+  const floatingZones: FloatingImageZone[] =
+    floatingRects.length > 0 ? rectsToFloatingZones(floatingRects, contentWidth) : [];
 
   // PHASE 3: Render floating images in a page-level layer
   if (allFloatingImages.length > 0) {
@@ -821,14 +851,22 @@ export function renderPage(
           renderedInlineImageKeysByBlock.set(blockKey, renderedInlineImageKeys);
         }
 
+        // Re-measure paragraph with floating zones for text wrapping
+        let paragraphMeasure = blockData.measure as ParagraphMeasure;
+        if (floatingZones.length > 0) {
+          paragraphMeasure = measureParagraph(paragraphBlock, contentWidth, {
+            floatingZones,
+            paragraphYOffset: fragmentContentY,
+          });
+        }
+
         fragmentEl = renderParagraphFragment(
           fragment as ParagraphFragment,
           paragraphBlock,
-          blockData.measure as ParagraphMeasure,
+          paragraphMeasure,
           fragmentContext,
           {
             document: doc,
-            floatingImageInfo: exclusionZones.length > 0 ? exclusionZones : undefined,
             fragmentContentY: fragmentContentY,
             prevBorders: prevParagraphBorders,
             nextBorders,

@@ -42,26 +42,9 @@ export const PARAGRAPH_CLASS_NAMES = {
   lineBreak: 'layout-run-linebreak',
 };
 
-/**
- * Info about page-level floating images that affect text layout.
- * Passed from renderPage to renderParagraph to apply proper margins.
- */
-export interface FloatingImageInfo {
-  /** Left margin to reserve for floating images (pixels) */
-  leftMargin: number;
-  /** Right margin to reserve for floating images (pixels) */
-  rightMargin: number;
-  /** Top Y position where this zone starts (content-relative) */
-  topY: number;
-  /** Bottom Y position where this zone ends (content-relative) */
-  bottomY: number;
-}
-
-// NOTE: Per-line floating margin calculation has been disabled.
-// Text wrapping around floating images requires passing exclusion zones
-// to the MEASUREMENT phase so lines can be broken at reduced widths.
-// Currently, floating images render at page level and text flows under them.
-// TODO: Implement measurement-time floating image support for proper text wrapping.
+// Text wrapping around floating images is implemented via measurement-time
+// per-line leftOffset/rightOffset. renderPage.ts re-measures paragraphs with
+// FloatingImageZone[] when floating images are present on the page.
 
 /**
  * Options for rendering a paragraph
@@ -69,8 +52,6 @@ export interface FloatingImageInfo {
 export interface RenderParagraphOptions {
   /** Document to create elements in */
   document?: Document;
-  /** Page-level floating image info for text wrapping (exclusion zones) */
-  floatingImageInfo?: FloatingImageInfo[];
   /** Fragment's Y position relative to content area (for per-line margin calculation) */
   fragmentContentY?: number;
   /** Borders from the previous adjacent paragraph (for border grouping) */
@@ -688,17 +669,8 @@ export function renderLine(
   const hasHighlight = runsForLine.some((r) => isTextRun(r) && r.highlight);
   lineEl.style.overflow = hasHighlight ? 'hidden' : 'visible';
 
-  // NOTE: Per-line floating image margins are NOT applied here because:
-  // 1. Text was already measured and line-broken at full paragraph width
-  // 2. Applying margins at render time would push content without re-wrapping
-  // 3. This causes text overflow and paragraph overlapping
-  //
-  // Proper text wrapping around floating images requires:
-  // - Passing floating image info to measureParagraph
-  // - Re-calculating line widths based on vertical overlap
-  // - This is a significant architectural change (TODO)
-  //
-  // For now, floating images render at page level and text flows under them.
+  // Per-line floating margins (leftOffset/rightOffset) are now applied by
+  // renderParagraphFragment via MeasuredLine offsets from re-measurement.
 
   // Build tab context if we have tab runs - also create for text measurement
   const hasTabRuns = runsForLine.some(isTabRun);
@@ -785,8 +757,9 @@ export function renderLine(
     } else if (isImageRun(run)) {
       // Skip floating images - they're rendered separately at page level.
       // Exception: inside table cells, floating images must render in-flow
-      // because page-level extraction doesn't reach into cell paragraphs.
-      if (isFloatingImageRun(run) && !options?.context?.insideTableCell) {
+      // Floating images are rendered in dedicated floating layers (page-level
+      // or cell-level), not inline. Skip them here to avoid double rendering.
+      if (isFloatingImageRun(run)) {
         continue;
       }
       const imageKey = getInlineImageRunKey(run);
@@ -1106,11 +1079,19 @@ export function renderParagraphFragment(
     });
 
     // Apply left offset from floating images (lines start after the floating image)
-    if (lineLeftOffset > 0) {
-      lineEl.style.marginLeft = `${lineLeftOffset}px`;
-    }
-    if (lineRightOffset > 0) {
-      lineEl.style.marginRight = `${lineRightOffset}px`;
+    // Also constrain width so text doesn't overflow into the image area
+    if (lineLeftOffset > 0 || lineRightOffset > 0) {
+      if (lineLeftOffset > 0) {
+        lineEl.style.marginLeft = `${lineLeftOffset}px`;
+      }
+      if (lineRightOffset > 0) {
+        lineEl.style.marginRight = `${lineRightOffset}px`;
+      }
+      // Constrain line width to prevent text from extending into floating image area
+      const constrainedWidth = lineAvailableWidth - lineLeftOffset - lineRightOffset;
+      if (constrainedWidth > 0) {
+        lineEl.style.width = `${constrainedWidth}px`;
+      }
     }
 
     // Update cumulative Y for next line
