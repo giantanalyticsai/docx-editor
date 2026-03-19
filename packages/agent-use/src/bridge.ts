@@ -92,6 +92,19 @@ export interface EditorBridge {
 
 // ── Implementation ──────────────────────────────────────────────────────────
 
+/** Extract plain text from a Comment's content paragraphs. */
+function getCommentText(content: unknown[]): string {
+  if (!content || content.length === 0) return '';
+  // Comment content is Paragraph[] — each paragraph has runs with text
+  return content
+    .map((para) => {
+      const p = para as { content?: Array<{ content?: Array<{ text?: string }> }> };
+      if (!p?.content) return '';
+      return p.content.map((run) => run.content?.map((t) => t.text || '').join('') || '').join('');
+    })
+    .join('\n');
+}
+
 /**
  * Get the DocumentBody from the editor ref, using the live PM state.
  */
@@ -134,50 +147,47 @@ export function createEditorBridge(editorRef: EditorRefLike, author = 'AI'): Edi
     },
 
     getComments(filter?: CommentFilter): ReviewComment[] {
-      // Read from live editor state (includes comments added via the bridge)
-      // rather than from the Document model which may be stale
       const body = getDocumentBody(editorRef);
       if (!body) return [];
-      // Merge Document-level comments with live editor comments
+
+      // Prefer doc-level comments (include anchor/paragraph info)
       const docComments = getComments(body, filter);
-
-      // Also check live editor state for freshly added comments
-      const liveComments = editorRef.getComments();
-      if (liveComments.length === 0) return docComments;
-
-      // If doc-level comments exist, use those (they include anchor info).
-      // Otherwise build ReviewComment from live state.
       if (docComments.length > 0) return docComments;
 
-      // Build ReviewComment from live editor Comment objects
+      // Fallback: build from live editor state (for comments added via bridge)
+      const liveComments = editorRef.getComments();
+      if (liveComments.length === 0) return [];
+
+      // Pre-group replies by parentId (O(n) instead of O(n^2))
+      const repliesByParent = new Map<number, typeof liveComments>();
+      const topLevel: typeof liveComments = [];
+      for (const c of liveComments) {
+        if (c.parentId) {
+          const arr = repliesByParent.get(c.parentId);
+          if (arr) arr.push(c);
+          else repliesByParent.set(c.parentId, [c]);
+        } else {
+          topLevel.push(c);
+        }
+      }
+
       const result: ReviewComment[] = [];
-      const topLevel = liveComments.filter((c) => !c.parentId);
       for (const c of topLevel) {
-        const replies = liveComments.filter((r) => r.parentId === c.id);
-        const getText = (comment: typeof c) => {
-          if (!comment.content || comment.content.length === 0) return '';
-          const para = comment.content[0] as {
-            content?: Array<{ content?: Array<{ text?: string }> }>;
-          };
-          if (!para?.content) return '';
-          return para.content
-            .map((run) => run.content?.map((t) => t.text || '').join('') || '')
-            .join('');
-        };
         if (filter?.author && c.author !== filter.author) continue;
         if (filter?.done !== undefined && (c.done ?? false) !== filter.done) continue;
+        const replies = repliesByParent.get(c.id) ?? [];
         result.push({
           id: c.id,
           author: c.author,
           date: c.date ?? null,
-          text: getText(c),
+          text: getCommentText(c.content),
           anchoredText: '',
-          paragraphIndex: -1, // not available from live state
+          paragraphIndex: -1,
           replies: replies.map((r) => ({
             id: r.id,
             author: r.author,
             date: r.date ?? null,
-            text: getText(r),
+            text: getCommentText(r.content),
           })),
           done: c.done ?? false,
         });

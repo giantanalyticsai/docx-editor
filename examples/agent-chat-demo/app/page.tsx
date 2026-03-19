@@ -25,11 +25,6 @@ type OpenAIMessage = any;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-let msgId = 0;
-function nextId() {
-  return `msg-${++msgId}`;
-}
-
 const TOOL_LABELS: Record<string, string> = {
   read_document: 'Read document',
   read_comments: 'Read comments',
@@ -71,6 +66,8 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const openaiHistoryRef = useRef<OpenAIMessage[]>([]);
+  const msgIdRef = useRef(0);
+  const nextId = () => `msg-${++msgIdRef.current}`;
 
   // Hook: wires agent tools to the live editor
   const { executeToolCall, toolSchemas } = useAgentChat({

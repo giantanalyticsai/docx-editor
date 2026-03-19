@@ -12,10 +12,13 @@
  * ```
  */
 
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { createEditorBridge, type EditorRefLike } from './bridge';
 import { executeToolCall as execTool, getToolSchemas } from './tools';
 import type { AgentToolResult } from './tools';
+
+/** Computed once — tool definitions are static. */
+const TOOL_SCHEMAS = getToolSchemas();
 
 export interface UseAgentChatOptions {
   /** Reference to the DocxEditor (must match EditorRefLike interface). */
@@ -37,17 +40,24 @@ export interface UseAgentChatReturn {
 export function useAgentChat(options: UseAgentChatOptions): UseAgentChatReturn {
   const { editorRef, author = 'AI' } = options;
 
+  // Bridge is created once per author change and reused across tool calls
+  const bridgeRef = useMemo(() => {
+    return {
+      get: () => (editorRef.current ? createEditorBridge(editorRef.current, author) : null),
+    };
+  }, [editorRef, author]);
+
   const executeToolCall = useCallback(
     (toolName: string, input: Record<string, unknown>): AgentToolResult => {
-      if (!editorRef.current) return { success: false, error: 'Editor not ready' };
-      const bridge = createEditorBridge(editorRef.current, author);
+      const bridge = bridgeRef.get();
+      if (!bridge) return { success: false, error: 'Editor not ready' };
       return execTool(toolName, input, bridge);
     },
-    [editorRef, author]
+    [bridgeRef]
   );
 
   return {
     executeToolCall,
-    toolSchemas: getToolSchemas(),
+    toolSchemas: TOOL_SCHEMAS,
   };
 }
