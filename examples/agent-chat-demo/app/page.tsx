@@ -2,12 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { DocxEditor, type DocxEditorRef } from '@eigenpal/docx-js-editor';
-import {
-  createEditorBridge,
-  getToolSchemas,
-  executeToolCall,
-  type EditorRefLike,
-} from '@eigenpal/docx-editor-agents/bridge';
+import { useAgentChat, type EditorRefLike } from '@eigenpal/docx-editor-agents/bridge';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -75,9 +70,13 @@ export default function Home() {
   const editorRef = useRef<DocxEditorRef>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
-
-  // Full OpenAI message history — preserved across turns (includes tool_calls + tool results)
   const openaiHistoryRef = useRef<OpenAIMessage[]>([]);
+
+  // Hook: wires agent tools to the live editor
+  const { executeToolCall, toolSchemas } = useAgentChat({
+    editorRef: editorRef as React.RefObject<EditorRefLike | null>,
+    author: 'Assistant',
+  });
 
   // Auto-scroll chat
   useEffect(() => {
@@ -123,12 +122,8 @@ export default function Home() {
     setError(null);
 
     try {
-      // Append user message to persistent OpenAI history
       openaiHistoryRef.current.push({ role: 'user', content: text });
-
-      const tools = getToolSchemas();
       const allToolCalls: ToolCallLog[] = [];
-      const bridge = createEditorBridge(editorRef.current as unknown as EditorRefLike, 'Assistant');
 
       // Tool-use loop — call API, execute tools locally, repeat
       const MAX_ITERATIONS = 10;
@@ -138,7 +133,7 @@ export default function Home() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...openaiHistoryRef.current],
-            tools,
+            tools: toolSchemas,
           }),
         });
 
@@ -173,7 +168,7 @@ export default function Home() {
           } catch {
             args = {};
           }
-          const result = executeToolCall(toolCall.function.name, args, bridge);
+          const result = executeToolCall(toolCall.function.name, args);
 
           const resultStr =
             typeof result.data === 'string'
