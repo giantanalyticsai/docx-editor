@@ -117,7 +117,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/eigenpal/docx-js-editor.git",
+    "url": "https://github.com/giantanalyticsai/docx-editor.git",
     "directory": "packages/react"
   },
   "publishConfig": {
