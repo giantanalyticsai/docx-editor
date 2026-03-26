@@ -29,11 +29,14 @@ export type WorkerClientOptions = {
 };
 
 export function createWorkerClient(options: WorkerClientOptions) {
-  const enabled = options.enabled ?? true;
+  const enabled = options.enabled ?? false;
   const workerFactory =
     options.workerFactory ??
-    (() =>
-      new Worker(new URL('./pmDocumentWorker.ts', import.meta.url), { type: 'module' }) as any);
+    (() => {
+      // Default worker factory disabled — the .ts worker file isn't available
+      // from the published package. Consumers can provide their own factory.
+      throw new Error('No workerFactory provided and default worker is unavailable');
+    });
 
   let worker: WorkerLike | null = null;
   let seq = 0;
