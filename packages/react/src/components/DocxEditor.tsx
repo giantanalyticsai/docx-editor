@@ -29,7 +29,7 @@ import type {
   ColorValue,
 } from '@eigenpal/docx-core/types/document';
 
-import { Toolbar, ToolbarButton, ToolbarSeparator } from './Toolbar';
+import { Toolbar, ToolbarButton, ToolbarGroup, ToolbarSeparator } from './Toolbar';
 import type { SelectionFormatting, FormattingAction } from './toolbarTypes';
 import { RibbonToolbar } from './Ribbon';
 import { EditorToolbar } from './EditorToolbar';
@@ -223,9 +223,11 @@ import {
 } from '@eigenpal/docx-core/prosemirror';
 import {
   acceptChange,
-  acceptAllChanges,
   rejectChange,
+  acceptAllChanges,
   rejectAllChanges,
+  findNextChange,
+  findPreviousChange,
   removeCommentMark,
 } from '@eigenpal/docx-core/prosemirror/commands/comments';
 import { collectHeadings } from '@eigenpal/docx-core/utils/headingCollector';
@@ -866,6 +868,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     }
   }, [showRulerProp, isRulerControlled]);
 
+  const [hasTextSelection, setHasTextSelection] = useState(false);
   const [isAddingComment, setIsAddingComment] = useState(false);
   const [commentSelectionRange, setCommentSelectionRange] = useState<{
     from: number;
@@ -1156,6 +1159,27 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       canRedo: redoCommand ? redoCommand(view.state) : false,
     };
   }, [extensionManager, getActiveEditorView]);
+
+  // Shared handler for starting a comment — called from toolbar button,
+  // keyboard shortcut (Ctrl+Alt+M), and right-click context menu.
+  const handleStartAddComment = useCallback(() => {
+    const view = getActiveEditorView();
+    if (!view) return;
+    const { from, to } = view.state.selection;
+    if (from === to) return;
+    const yPos = findSelectionYPosition(scrollContainerRef.current, editorContentRef.current, from);
+    setCommentSelectionRange({ from, to });
+    const pendingMark = view.state.schema.marks.comment.create({
+      commentId: PENDING_COMMENT_ID,
+    });
+    const tr = view.state.tr.addMark(from, to, pendingMark);
+    tr.setSelection(TextSelection.create(tr.doc, to));
+    view.dispatch(tr);
+    setAddCommentYPosition(yPos);
+    setShowCommentsSidebar(true);
+    setIsAddingComment(true);
+    setFloatingCommentBtn(null);
+  }, [getActiveEditorView]);
 
   // Helper to focus the active editor
   const focusActiveEditor = useCallback(() => {
@@ -1590,6 +1614,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       if (view) {
         const { from, to } = view.state.selection;
         lastSelectionRef.current = { from, to };
+        setHasTextSelection(from !== to);
       }
 
       // Also check table context from ProseMirror
@@ -1826,6 +1851,13 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         }
       }
 
+      // Ctrl+Alt+M / Cmd+Opt+M — Add comment (matches Google Docs shortcut)
+      if (cmdOrCtrl && e.altKey && !e.shiftKey && e.key.toLowerCase() === 'm') {
+        e.preventDefault();
+        handleStartAddComment();
+        return;
+      }
+
       if (cmdOrCtrl && !e.shiftKey && !e.altKey) {
         if (e.key.toLowerCase() === 'f') {
           e.preventDefault();
@@ -1858,7 +1890,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [handleOpenFind, handleOpenReplace, hyperlinkDialog, tableSelection]);
+  }, [handleOpenFind, handleOpenReplace, handleStartAddComment, hyperlinkDialog, tableSelection]);
 
   // Handle table insert from toolbar
   const handleInsertTable = useCallback(
@@ -3128,34 +3160,14 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         case 'deleteColumn':
           pmDeleteColumn(view.state, view.dispatch);
           break;
-        // Comment — same flow as floating comment button
-        case 'addComment': {
-          const { from, to } = view.state.selection;
-          if (from === to) break;
-          // Compute Y position BEFORE dispatching — dispatch triggers re-layout
-          // which rebuilds page DOM and invalidates the old span elements
-          const yPos = findSelectionYPosition(
-            scrollContainerRef.current,
-            editorContentRef.current,
-            from
-          );
-          setCommentSelectionRange({ from, to });
-          const pendingMark = view.state.schema.marks.comment.create({
-            commentId: PENDING_COMMENT_ID,
-          });
-          const tr = view.state.tr.addMark(from, to, pendingMark);
-          tr.setSelection(TextSelection.create(tr.doc, to));
-          view.dispatch(tr);
-          setAddCommentYPosition(yPos);
-          setShowCommentsSidebar(true);
-          setIsAddingComment(true);
-          setFloatingCommentBtn(null);
+        // Comment — delegate to shared handler
+        case 'addComment':
+          handleStartAddComment();
           break;
-        }
       }
       // TextContextMenu calls onClose after onAction, so no need to close here
     },
-    [getActiveEditorView, focusActiveEditor]
+    [getActiveEditorView, focusActiveEditor, handleStartAddComment]
   );
 
   // Handle margin changes from rulers
@@ -4192,24 +4204,98 @@ body { background: white; }
 
   const toolbarChildren = (
     <>
-      <ToolbarSeparator />
-      <ToolbarButton
-        onClick={() => setShowCommentsSidebar(!showCommentsSidebar)}
-        active={showCommentsSidebar}
-        title="Toggle comments sidebar"
-        ariaLabel="Toggle comments sidebar"
-      >
-        <MaterialSymbol name="comment" size={20} />
-      </ToolbarButton>
-      {/* Resolved comments use margin markers instead of toolbar toggle */}
-      <ToolbarSeparator />
-      <EditingModeDropdown
-        mode={editingMode}
-        onModeChange={(mode) => {
-          setEditingMode(mode);
-          if (mode === 'suggesting') setShowCommentsSidebar(true);
-        }}
-      />
+      {/* Comments */}
+      <ToolbarGroup label="Comments">
+        <ToolbarButton
+          onClick={handleStartAddComment}
+          disabled={!hasTextSelection || readOnly}
+          title="Add comment (Ctrl+Alt+M)"
+          ariaLabel="Add comment"
+        >
+          <MaterialSymbol name="add_comment" size={18} />
+        </ToolbarButton>
+        <ToolbarButton
+          onClick={() => setShowCommentsSidebar(!showCommentsSidebar)}
+          active={showCommentsSidebar}
+          title="Toggle comments sidebar"
+          ariaLabel="Toggle comments sidebar"
+        >
+          <MaterialSymbol name="comment" size={18} />
+        </ToolbarButton>
+      </ToolbarGroup>
+
+      {/* Track changes */}
+      {editingMode === 'suggesting' && (
+        <ToolbarGroup label="Track changes">
+          <ToolbarButton
+            onClick={() => {
+              const view = getActiveEditorView();
+              if (view) acceptAllChanges()(view.state, view.dispatch);
+            }}
+            title="Accept all changes"
+            ariaLabel="Accept all changes"
+          >
+            <MaterialSymbol name="check" size={18} />
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={() => {
+              const view = getActiveEditorView();
+              if (view) rejectAllChanges()(view.state, view.dispatch);
+            }}
+            title="Reject all changes"
+            ariaLabel="Reject all changes"
+          >
+            <MaterialSymbol name="close" size={18} />
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={() => {
+              const view = getActiveEditorView();
+              if (!view) return;
+              const range = findPreviousChange(view.state, view.state.selection.from);
+              if (range) {
+                const tr = view.state.tr.setSelection(
+                  TextSelection.create(view.state.doc, range.from, range.to)
+                );
+                view.dispatch(tr);
+                pagedEditorRef.current?.scrollToPosition(range.from);
+              }
+            }}
+            title="Previous change"
+            ariaLabel="Previous change"
+          >
+            <MaterialSymbol name="keyboard_arrow_left" size={18} />
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={() => {
+              const view = getActiveEditorView();
+              if (!view) return;
+              const range = findNextChange(view.state, view.state.selection.from);
+              if (range) {
+                const tr = view.state.tr.setSelection(
+                  TextSelection.create(view.state.doc, range.from, range.to)
+                );
+                view.dispatch(tr);
+                pagedEditorRef.current?.scrollToPosition(range.from);
+              }
+            }}
+            title="Next change"
+            ariaLabel="Next change"
+          >
+            <MaterialSymbol name="keyboard_arrow_right" size={18} />
+          </ToolbarButton>
+        </ToolbarGroup>
+      )}
+
+      {/* Editing mode + consumer extras */}
+      <ToolbarGroup label="Editing mode">
+        <EditingModeDropdown
+          mode={editingMode}
+          onModeChange={(mode) => {
+            setEditingMode(mode);
+            if (mode === 'suggesting') setShowCommentsSidebar(true);
+          }}
+        />
+      </ToolbarGroup>
       {toolbarExtra}
     </>
   );
