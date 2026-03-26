@@ -1,17 +1,27 @@
 /**
- * EditorToolbar — Google Docs-style 2-level compound component.
+ * EditorToolbar — compound component with optional ribbon-style tabs.
  *
- * Usage:
+ * Supports two layouts:
+ *   1. Classic (Google Docs): TitleBar + FormattingBar (default)
+ *   2. Tabbed (Word-style):   TitleBar + ToolbarTabs + active tab content
+ *
+ * Usage (tabbed):
  *   <EditorToolbar {...toolbarProps}>
  *     <EditorToolbar.TitleBar>
  *       <EditorToolbar.Logo><MyIcon /></EditorToolbar.Logo>
  *       <EditorToolbar.DocumentName value={name} onChange={setName} />
  *       <EditorToolbar.MenuBar />
- *       <EditorToolbar.TitleBarRight>
- *         <button>Save</button>
- *       </EditorToolbar.TitleBarRight>
+ *       <EditorToolbar.ToolbarTabs
+ *         activeTab={activeTab}
+ *         onTabChange={setActiveTab}
+ *         tabs={[
+ *           { id: 'home', label: 'Home' },
+ *           { id: 'review', label: 'Review' },
+ *         ]}
+ *       />
  *     </EditorToolbar.TitleBar>
- *     <EditorToolbar.FormattingBar />
+ *     {activeTab === 'home' && <EditorToolbar.FormattingBar />}
+ *     {activeTab === 'review' && <EditorToolbar.ReviewBar>{...}</EditorToolbar.ReviewBar>}
  *   </EditorToolbar>
  */
 
@@ -22,6 +32,10 @@ import { TitleBar, Logo, DocumentName, MenuBar, TitleBarRight } from './TitleBar
 import type { TitleBarProps, LogoProps, DocumentNameProps, TitleBarRightProps } from './TitleBar';
 import { FormattingBar } from './FormattingBar';
 import type { FormattingBarProps } from './FormattingBar';
+import { ReviewBar } from './ReviewBar';
+import type { ReviewBarProps } from './ReviewBar';
+import { ToolbarTabs } from './ToolbarTabs';
+import type { ToolbarTabsProps } from './ToolbarTabs';
 import { cn } from '../lib/utils';
 
 // ============================================================================
@@ -36,6 +50,8 @@ interface EditorToolbarComponent {
   MenuBar: typeof MenuBar;
   TitleBarRight: typeof TitleBarRight;
   FormattingBar: typeof FormattingBar;
+  ReviewBar: typeof ReviewBar;
+  ToolbarTabs: typeof ToolbarTabs;
 }
 
 function EditorToolbarBase({
@@ -63,6 +79,8 @@ EditorToolbar.DocumentName = DocumentName;
 EditorToolbar.MenuBar = MenuBar;
 EditorToolbar.TitleBarRight = TitleBarRight;
 EditorToolbar.FormattingBar = FormattingBar;
+EditorToolbar.ReviewBar = ReviewBar;
+EditorToolbar.ToolbarTabs = ToolbarTabs;
 
 export { EditorToolbar };
 export type {
@@ -72,4 +90,6 @@ export type {
   DocumentNameProps,
   TitleBarRightProps,
   FormattingBarProps,
+  ReviewBarProps,
+  ToolbarTabsProps,
 };

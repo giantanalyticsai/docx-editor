@@ -77,6 +77,8 @@ export function createPlugin(
     panelPosition?: 'left' | 'right';
     /** @deprecated */
     panelWidth?: number;
+    /** Called when user clicks a template tag in the document. Receives the tag data. */
+    onTagSelect?: (tag: TemplateTag) => void;
   } = {}
 ): ReactEditorPlugin<TemplatePluginState> {
   const pmPlugin = createTemplatePlugin();
@@ -142,7 +144,14 @@ export function createPlugin(
         onHover: (id: string | undefined) => {
           if (editorView) setHoveredElement(editorView, id);
         },
-        onSelect: (id: string) => selectTag(editorView, state.tags, id),
+        onSelect: (id: string) => {
+          selectTag(editorView, state.tags, id);
+          // Notify consumer so they can open their own edit dialog
+          if (_options.onTagSelect) {
+            const tag = state.tags.find((t) => t.id === id);
+            if (tag) _options.onTagSelect(tag);
+          }
+        },
       });
     },
 

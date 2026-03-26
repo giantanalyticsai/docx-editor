@@ -122,7 +122,8 @@ const DEFAULT_MENU_ITEMS: TextContextMenuItem[] = [
     dividerAfter: true,
   },
   { action: 'delete', label: 'Delete', shortcut: 'Del', dividerAfter: true },
-  { action: 'selectAll', label: 'Select All', shortcut: 'Ctrl+A' },
+  { action: 'selectAll', label: 'Select All', shortcut: 'Ctrl+A', dividerAfter: true },
+  { action: 'addComment', label: 'Comment', shortcut: 'Ctrl+Alt+M' },
 ];
 
 // ============================================================================
