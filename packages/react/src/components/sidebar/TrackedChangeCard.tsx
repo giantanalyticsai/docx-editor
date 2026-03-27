@@ -6,6 +6,7 @@ import { formatDate, getInitials, avatarStyle, ICON_BUTTON_STYLE } from './cardU
 import { ReplyThread } from './ReplyThread';
 import { ReplyInput } from './ReplyInput';
 import { CARD_STYLE_COLLAPSED, CARD_STYLE_EXPANDED } from './cardStyles';
+import type { MentionProvider } from './MentionDropdown';
 
 export interface TrackedChangeCardProps extends SidebarItemRenderProps {
   change: TrackedChangeEntry;
@@ -13,6 +14,7 @@ export interface TrackedChangeCardProps extends SidebarItemRenderProps {
   onAccept?: (from: number, to: number) => void;
   onReject?: (from: number, to: number) => void;
   onReply?: (revisionId: number, text: string) => void;
+  mentionProvider?: MentionProvider;
 }
 
 export function TrackedChangeCard({
@@ -24,6 +26,7 @@ export function TrackedChangeCard({
   onAccept,
   onReject,
   onReply,
+  mentionProvider,
 }: TrackedChangeCardProps) {
   const authorName = change.author || 'Unknown';
 
@@ -80,7 +83,12 @@ export function TrackedChangeCard({
 
       <ReplyThread replies={replies} isExpanded={isExpanded} />
 
-      {isExpanded && <ReplyInput onSubmit={(text) => onReply?.(change.revisionId, text)} />}
+      {isExpanded && (
+        <ReplyInput
+          onSubmit={(text) => onReply?.(change.revisionId, text)}
+          mentionProvider={mentionProvider}
+        />
+      )}
     </div>
   );
 }

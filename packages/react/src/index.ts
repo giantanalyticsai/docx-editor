@@ -126,6 +126,7 @@ export {
   type ToolbarTabsProps,
 } from './components/EditorToolbar';
 export { FormattingBar } from './components/FormattingBar';
+export type { MentionProvider, MentionUser } from './components/sidebar/MentionDropdown';
 export { ReviewBar } from './components/ReviewBar';
 export { ToolbarTabs, type ToolbarTab } from './components/ToolbarTabs';
 export {

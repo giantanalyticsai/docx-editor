@@ -12,6 +12,7 @@ import {
 import { ReplyThread } from './ReplyThread';
 import { ReplyInput } from './ReplyInput';
 import { CARD_STYLE_COLLAPSED, CARD_STYLE_EXPANDED } from './cardStyles';
+import type { MentionProvider } from './MentionDropdown';
 
 export interface CommentCardProps extends SidebarItemRenderProps {
   comment: Comment;
@@ -20,6 +21,7 @@ export interface CommentCardProps extends SidebarItemRenderProps {
   onResolve?: (commentId: number) => void;
   onUnresolve?: (commentId: number) => void;
   onDelete?: (commentId: number) => void;
+  mentionProvider?: MentionProvider;
 }
 
 export function CommentCard({
@@ -32,6 +34,7 @@ export function CommentCard({
   onResolve,
   onUnresolve,
   onDelete,
+  mentionProvider,
 }: CommentCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -154,7 +157,10 @@ export function CommentCard({
       <ReplyThread replies={replies} isExpanded={isExpanded} />
 
       {isExpanded && !comment.done && (
-        <ReplyInput onSubmit={(text) => onReply?.(comment.id, text)} />
+        <ReplyInput
+          onSubmit={(text) => onReply?.(comment.id, text)}
+          mentionProvider={mentionProvider}
+        />
       )}
     </div>
   );
