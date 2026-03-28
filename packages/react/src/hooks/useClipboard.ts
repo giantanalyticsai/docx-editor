@@ -12,9 +12,9 @@ import {
   parseClipboardHtml,
   runsToClipboardContent,
   type ParsedClipboardContent,
-} from '@eigenpal/docx-core/utils/clipboard';
-import { getSelectionRuns, createSelectionFromDOM } from '@eigenpal/docx-core';
-import type { ClipboardSelection } from '@eigenpal/docx-core';
+} from '@giantanalyticsai/docx-core/utils/clipboard';
+import { getSelectionRuns, createSelectionFromDOM } from '@giantanalyticsai/docx-core';
+import type { ClipboardSelection } from '@giantanalyticsai/docx-core';
 
 // ============================================================================
 // RE-EXPORTS (backwards compat)

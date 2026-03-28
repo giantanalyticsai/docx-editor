@@ -22,13 +22,13 @@ import type {
   Image as ImageType,
   Shape as ShapeType,
   TextBox as TextBoxType,
-} from '@eigenpal/docx-core/types/document';
+} from '@giantanalyticsai/docx-core/types/document';
 import {
   paragraphToStyle,
   textToStyle,
   mergeStyles,
-} from '@eigenpal/docx-core/utils/formatToStyle';
-import { formatPx } from '@eigenpal/docx-core/utils/units';
+} from '@giantanalyticsai/docx-core/utils/formatToStyle';
+import { formatPx } from '@giantanalyticsai/docx-core/utils/units';
 import { Run } from './Run';
 import { Tab } from './Tab';
 import { Hyperlink } from './Hyperlink';

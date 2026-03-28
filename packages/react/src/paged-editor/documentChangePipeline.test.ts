@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'bun:test';
-import { schema } from '@eigenpal/docx-core/prosemirror/schema';
+import { schema } from '@giantanalyticsai/docx-core/prosemirror/schema';
 import { createDocumentChangePipeline } from './documentChangePipeline';
-import type { Document } from '@eigenpal/docx-core/types/document';
+import type { Document } from '@giantanalyticsai/docx-core/types/document';
 
 function buildPmDocJson(text: string) {
   return schema.node('doc', null, [schema.node('paragraph', null, schema.text(text))]).toJSON();

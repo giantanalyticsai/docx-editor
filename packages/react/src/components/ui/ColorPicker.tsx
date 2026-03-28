@@ -10,8 +10,8 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import type { ColorValue, Theme } from '@eigenpal/docx-core/types/document';
-import { resolveHighlightColor } from '@eigenpal/docx-core/utils/colorResolver';
+import type { ColorValue, Theme } from '@giantanalyticsai/docx-core/types/document';
+import { resolveHighlightColor } from '@giantanalyticsai/docx-core/utils/colorResolver';
 import { useFixedDropdown } from './useFixedDropdown';
 
 // ============================================================================

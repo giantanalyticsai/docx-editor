@@ -11,7 +11,7 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import type { CSSProperties, KeyboardEvent, MouseEvent } from 'react';
-import type { Image as ImageType, ImageSize } from '@eigenpal/docx-core/types/document';
+import type { Image as ImageType, ImageSize } from '@giantanalyticsai/docx-core/types/document';
 import {
   getImageWidthPx,
   getImageHeightPx,
@@ -21,8 +21,8 @@ import {
   isInFrontOfText,
   isDecorativeImage,
   getWrapDistancesPx,
-} from '@eigenpal/docx-core/docx/imageParser';
-import { pixelsToEmu } from '@eigenpal/docx-core/utils/units';
+} from '@giantanalyticsai/docx-core/docx/imageParser';
+import { pixelsToEmu } from '@giantanalyticsai/docx-core/utils/units';
 
 // ============================================================================
 // TYPES

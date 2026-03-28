@@ -17,7 +17,7 @@ import type {
   FootnoteProperties,
   EndnoteProperties,
   Theme,
-} from '@eigenpal/docx-core/types/document';
+} from '@giantanalyticsai/docx-core/types/document';
 
 // ============================================================================
 // TYPES

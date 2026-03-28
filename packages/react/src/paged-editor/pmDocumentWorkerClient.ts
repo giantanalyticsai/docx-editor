@@ -1,4 +1,4 @@
-import type { Document } from '@eigenpal/docx-core/types/document';
+import type { Document } from '@giantanalyticsai/docx-core/types/document';
 
 export type ConversionMode = 'full' | 'incremental';
 

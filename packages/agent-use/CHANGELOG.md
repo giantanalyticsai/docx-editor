@@ -1,4 +1,4 @@
-# @eigenpal/docx-editor-agents
+# @giantanalyticsai/docx-editor-agents
 
 ## 0.1.1
 

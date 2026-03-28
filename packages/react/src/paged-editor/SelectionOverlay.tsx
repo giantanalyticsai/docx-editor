@@ -13,7 +13,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import type {
   SelectionRect,
   CaretPosition,
-} from '@eigenpal/docx-core/layout-bridge/selectionRects';
+} from '@giantanalyticsai/docx-core/layout-bridge/selectionRects';
 
 // =============================================================================
 // TYPES
@@ -241,9 +241,9 @@ export const SelectionOverlay: React.FC<SelectionOverlayProps> = ({
  */
 export function useSelectionOverlay(
   pmSelection: { from: number; to: number } | null,
-  layout: import('@eigenpal/docx-core/layout-engine/types').Layout | null,
-  blocks: import('@eigenpal/docx-core/layout-engine/types').FlowBlock[],
-  measures: import('@eigenpal/docx-core/layout-engine/types').Measure[]
+  layout: import('@giantanalyticsai/docx-core/layout-engine/types').Layout | null,
+  blocks: import('@giantanalyticsai/docx-core/layout-engine/types').FlowBlock[],
+  measures: import('@giantanalyticsai/docx-core/layout-engine/types').Measure[]
 ): {
   selectionRects: SelectionRect[];
   caretPosition: CaretPosition | null;
@@ -259,7 +259,7 @@ export function useSelectionOverlay(
     }
 
     // Import dynamically to avoid circular dependencies
-    import('@eigenpal/docx-core/layout-bridge/selectionRects').then(
+    import('@giantanalyticsai/docx-core/layout-bridge/selectionRects').then(
       ({ selectionToRects, getCaretPosition }) => {
         const { from, to } = pmSelection;
 

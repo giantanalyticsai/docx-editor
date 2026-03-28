@@ -10,7 +10,7 @@
 
 import React, { useState, useCallback } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import type { NumberFormat } from '@eigenpal/docx-core/types/document';
+import type { NumberFormat } from '@giantanalyticsai/docx-core/types/document';
 import { MaterialSymbol } from './MaterialSymbol';
 
 // ============================================================================

@@ -6,7 +6,7 @@ import type {
   Document,
   DocumentBody,
   ParagraphContent,
-} from '@eigenpal/docx-core/headless';
+} from '@giantanalyticsai/docx-core/headless';
 import { createEditorBridge, type EditorRefLike } from '../bridge';
 
 // ============================================================================

@@ -13,7 +13,7 @@ import type {
   EndnotePosition,
   NoteNumberRestart,
   NumberFormat,
-} from '@eigenpal/docx-core/types/document';
+} from '@giantanalyticsai/docx-core/types/document';
 
 // ============================================================================
 // TYPES

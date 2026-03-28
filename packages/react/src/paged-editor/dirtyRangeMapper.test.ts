@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'bun:test';
 import { mapDirtyRangesToTopLevelIndices } from './dirtyRangeMapper';
-import { schema } from '@eigenpal/docx-core/prosemirror/schema';
+import { schema } from '@giantanalyticsai/docx-core/prosemirror/schema';
 import { Node as PMNode } from 'prosemirror-model';
 
 function buildDoc(texts: string[]): PMNode {

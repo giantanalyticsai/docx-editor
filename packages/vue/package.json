@@ -1,5 +1,5 @@
 {
-  "name": "@eigenpal/docx-editor-vue",
+  "name": "@giantanalyticsai/docx-editor-vue",
   "version": "0.0.1",
   "private": true,
   "description": "Vue.js wrapper for the DOCX editor - community contributed",
@@ -25,7 +25,7 @@
     "vue": "^3.0.0"
   },
   "dependencies": {
-    "@eigenpal/docx-core": "workspace:*"
+    "@giantanalyticsai/docx-core": "workspace:*"
   },
   "keywords": [
     "docx",
@@ -38,7 +38,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/eigenpal/docx-js-editor.git",
+    "url": "https://github.com/giantanalyticsai/docx-editor.git",
     "directory": "packages/vue"
   },
   "publishConfig": {

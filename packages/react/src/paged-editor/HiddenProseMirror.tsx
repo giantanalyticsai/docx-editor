@@ -29,16 +29,16 @@ import { CellSelection } from 'prosemirror-tables';
 import { EditorView, type DirectEditorProps } from 'prosemirror-view';
 import { undo, redo } from 'prosemirror-history';
 
-import { schema } from '@eigenpal/docx-core/prosemirror/schema';
-import { toProseDoc, createEmptyDoc } from '@eigenpal/docx-core/prosemirror/conversion';
-import { fromProseDoc } from '@eigenpal/docx-core/prosemirror/conversion/fromProseDoc';
-import type { ExtensionManager } from '@eigenpal/docx-core/prosemirror/extensions/ExtensionManager';
-import type { Document, Theme, StyleDefinitions } from '@eigenpal/docx-core/types/document';
+import { schema } from '@giantanalyticsai/docx-core/prosemirror/schema';
+import { toProseDoc, createEmptyDoc } from '@giantanalyticsai/docx-core/prosemirror/conversion';
+import { fromProseDoc } from '@giantanalyticsai/docx-core/prosemirror/conversion/fromProseDoc';
+import type { ExtensionManager } from '@giantanalyticsai/docx-core/prosemirror/extensions/ExtensionManager';
+import type { Document, Theme, StyleDefinitions } from '@giantanalyticsai/docx-core/types/document';
 import { PERF_ENABLED } from '../utils/perfFlags';
 
 // Import ProseMirror CSS
 import 'prosemirror-view/style/prosemirror.css';
-import '@eigenpal/docx-core/prosemirror/editor.css';
+import '@giantanalyticsai/docx-core/prosemirror/editor.css';
 
 // ============================================================================
 // TYPES

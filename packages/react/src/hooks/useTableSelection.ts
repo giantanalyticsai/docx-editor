@@ -11,8 +11,8 @@ import {
   getTableFromDocument,
   updateTableInDocument,
   deleteTableFromDocument,
-} from '@eigenpal/docx-core';
-import type { Document, Table } from '@eigenpal/docx-core/types/document';
+} from '@giantanalyticsai/docx-core';
+import type { Document, Table } from '@giantanalyticsai/docx-core/types/document';
 import type { TableContext, TableSelection, TableAction } from '../components/ui/TableToolbar';
 import {
   createTableContext,
@@ -35,8 +35,8 @@ export {
   getTableFromDocument,
   updateTableInDocument,
   deleteTableFromDocument,
-} from '@eigenpal/docx-core';
-export type { CellCoordinates } from '@eigenpal/docx-core';
+} from '@giantanalyticsai/docx-core';
+export type { CellCoordinates } from '@giantanalyticsai/docx-core';
 
 // ============================================================================
 // TYPES

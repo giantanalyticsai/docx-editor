@@ -6,7 +6,7 @@
  * Clicking opens sidebar / toggles resolved popup
  */
 
-import type { Comment } from '@eigenpal/docx-core/types/content';
+import type { Comment } from '@giantanalyticsai/docx-core/types/content';
 import { MaterialSymbol } from './ui/Icons';
 
 export interface CommentMarginMarkersProps {

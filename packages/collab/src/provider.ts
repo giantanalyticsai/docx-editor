@@ -6,7 +6,7 @@
  * (sync, undo, cursor awareness).
  *
  * Usage:
- *   import { createCollabProvider } from '@eigenpal/docx-collab/provider';
+ *   import { createCollabProvider } from '@giantanalyticsai/docx-collab/provider';
  *
  *   const collab = createCollabProvider({
  *     documentName: 'doc-123',

@@ -1,8 +1,8 @@
 /**
- * @eigenpal/docx-collab — Real-time collaborative editing for docx-js-editor.
+ * @giantanalyticsai/docx-collab — Real-time collaborative editing for docx-js-editor.
  *
  * Client-side: useCollaboration hook + CollabPresence component
- * Server-side: createCollabServer (import from '@eigenpal/docx-collab/server')
+ * Server-side: createCollabServer (import from '@giantanalyticsai/docx-collab/server')
  */
 
 // Client-side exports
@@ -24,4 +24,4 @@ export {
 export { CollabPresence } from './CollabPresence';
 
 // Server-side exports are in a separate entry point:
-// import { createCollabServer } from '@eigenpal/docx-collab/server'
+// import { createCollabServer } from '@giantanalyticsai/docx-collab/server'

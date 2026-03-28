@@ -8,7 +8,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { CSSProperties } from 'react';
-import type { Style } from '@eigenpal/docx-core/types/document';
+import type { Style } from '@giantanalyticsai/docx-core/types/document';
 import type { TableAction } from './TableToolbar';
 import { MaterialSymbol } from './MaterialSymbol';
 

@@ -11,15 +11,19 @@
 
 import React from 'react';
 import type { CSSProperties } from 'react';
-import type { TabStop, TabLeader, TabStopAlignment } from '@eigenpal/docx-core/types/document';
-import { twipsToPixels } from '@eigenpal/docx-core/utils/units';
+import type {
+  TabStop,
+  TabLeader,
+  TabStopAlignment,
+} from '@giantanalyticsai/docx-core/types/document';
+import { twipsToPixels } from '@giantanalyticsai/docx-core/utils/units';
 import {
   getNextTabStop,
   calculateTabWidth,
   getLeaderCharacter,
   hasVisibleLeader,
   DEFAULT_TAB_INTERVAL_TWIPS,
-} from '@eigenpal/docx-core/docx/tabParser';
+} from '@giantanalyticsai/docx-core/docx/tabParser';
 
 // ============================================================================
 // CONSTANTS

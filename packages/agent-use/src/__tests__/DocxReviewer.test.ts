@@ -11,7 +11,7 @@ import type {
   CommentRangeStart,
   CommentRangeEnd,
   ParagraphContent,
-} from '@eigenpal/docx-core/headless';
+} from '@giantanalyticsai/docx-core/headless';
 import { DocxReviewer } from '../DocxReviewer';
 import { TextNotFoundError, ChangeNotFoundError, CommentNotFoundError } from '../errors';
 

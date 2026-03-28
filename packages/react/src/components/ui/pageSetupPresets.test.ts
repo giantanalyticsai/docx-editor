@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import type { SectionProperties } from '@eigenpal/docx-core/types/document';
+import type { SectionProperties } from '@giantanalyticsai/docx-core/types/document';
 import {
   getMarginPresetId,
   getPageSizePresetId,

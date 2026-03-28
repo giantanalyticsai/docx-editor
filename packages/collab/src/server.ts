@@ -6,7 +6,7 @@
  * survive server restarts and can be loaded by new clients.
  *
  * Usage:
- *   import { createCollabServer } from '@eigenpal/docx-collab/server';
+ *   import { createCollabServer } from '@giantanalyticsai/docx-collab/server';
  *
  *   const server = createCollabServer({
  *     port: 8080,

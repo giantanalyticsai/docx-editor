@@ -9,7 +9,7 @@
 
 import React, { useState, useCallback } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import type { ParagraphAlignment } from '@eigenpal/docx-core/types/document';
+import type { ParagraphAlignment } from '@giantanalyticsai/docx-core/types/document';
 import { MaterialSymbol } from './MaterialSymbol';
 import { Button } from './Button';
 import { Tooltip } from './Tooltip';

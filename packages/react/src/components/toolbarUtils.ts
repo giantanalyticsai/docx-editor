@@ -5,7 +5,10 @@
  * Extracted from Toolbar.tsx to reduce file size.
  */
 
-import type { TextFormatting, ParagraphFormatting } from '@eigenpal/docx-core/types/document';
+import type {
+  TextFormatting,
+  ParagraphFormatting,
+} from '@giantanalyticsai/docx-core/types/document';
 import { pointsToHalfPoints } from './ui/FontSizePicker';
 import { createDefaultListState } from './ui/ListButtons';
 import type { SelectionFormatting, FormattingAction } from './toolbarTypes';

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Style, Theme, SectionProperties } from '@eigenpal/docx-core/types/document';
+import type { Style, Theme, SectionProperties } from '@giantanalyticsai/docx-core/types/document';
 import type { ImageSizeDialogFocusTarget } from '../dialogs/ImageSizeDialog';
-import type { TableContextInfo } from '@eigenpal/docx-core/prosemirror';
+import type { TableContextInfo } from '@giantanalyticsai/docx-core/prosemirror';
 
 import type { FormattingAction, SelectionFormatting } from '../toolbarTypes';
 import type { EditorMode } from '../ui/EditingModeDropdown';

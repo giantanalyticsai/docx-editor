@@ -17,8 +17,8 @@
     "declarationMap": true,
     "baseUrl": ".",
     "paths": {
-      "@eigenpal/docx-core": ["../core/src/core.ts"],
-      "@eigenpal/docx-core/headless": ["../core/src/headless.ts"]
+      "@giantanalyticsai/docx-core": ["../core/src/core.ts"],
+      "@giantanalyticsai/docx-core/headless": ["../core/src/headless.ts"]
     }
   },
   "include": ["src"],

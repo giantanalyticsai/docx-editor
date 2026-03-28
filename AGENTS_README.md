@@ -1,6 +1,6 @@
-# @eigenpal/docx-js-editor — Agent Reference
+# @giantanalyticsai/docx-js-editor — Agent Reference
 
-> This document is for AI coding agents (Claude Code, Cursor, Copilot, etc.) that need to integrate the `@eigenpal/docx-js-editor` library. It covers the full API with code examples derived from the actual working examples in the repository.
+> This document is for AI coding agents (Claude Code, Cursor, Copilot, etc.) that need to integrate the `@giantanalyticsai/docx-js-editor` library. It covers the full API with code examples derived from the actual working examples in the repository.
 
 ## Table of Contents
 
@@ -24,7 +24,7 @@
 
 ## Overview
 
-`@eigenpal/docx-js-editor` is an open-source, client-side WYSIWYG DOCX editor for the browser. It parses `.docx` files, renders them with Microsoft Word fidelity, and supports full editing — no backend required.
+`@giantanalyticsai/docx-js-editor` is an open-source, client-side WYSIWYG DOCX editor for the browser. It parses `.docx` files, renders them with Microsoft Word fidelity, and supports full editing — no backend required.
 
 Key capabilities:
 
@@ -38,7 +38,7 @@ Key capabilities:
 ## Installation
 
 ```bash
-npm install @eigenpal/docx-js-editor
+npm install @giantanalyticsai/docx-js-editor
 ```
 
 Peer dependencies: `react >= 18.0.0`, `react-dom >= 18.0.0`.
@@ -47,9 +47,9 @@ Peer dependencies: `react >= 18.0.0`, `react-dom >= 18.0.0`.
 
 | Import Path                           | Environment        | Use Case                                                                           |
 | ------------------------------------- | ------------------ | ---------------------------------------------------------------------------------- |
-| `@eigenpal/docx-js-editor`            | Browser (React)    | Full editor component, toolbar, dialogs, all UI                                    |
-| `@eigenpal/docx-js-editor/headless`   | Node.js or Browser | `DocumentAgent`, parsing, serialization, template processing — no React dependency |
-| `@eigenpal/docx-js-editor/styles.css` | Browser            | **Required** CSS for editor rendering                                              |
+| `@giantanalyticsai/docx-js-editor`            | Browser (React)    | Full editor component, toolbar, dialogs, all UI                                    |
+| `@giantanalyticsai/docx-js-editor/headless`   | Node.js or Browser | `DocumentAgent`, parsing, serialization, template processing — no React dependency |
+| `@giantanalyticsai/docx-js-editor/styles.css` | Browser            | **Required** CSS for editor rendering                                              |
 
 ---
 
@@ -59,8 +59,8 @@ Peer dependencies: `react >= 18.0.0`, `react-dom >= 18.0.0`.
 
 ```tsx
 import { useRef } from 'react';
-import { DocxEditor, type DocxEditorRef } from '@eigenpal/docx-js-editor';
-import '@eigenpal/docx-js-editor/styles.css';
+import { DocxEditor, type DocxEditorRef } from '@giantanalyticsai/docx-js-editor';
+import '@giantanalyticsai/docx-js-editor/styles.css';
 
 function Editor({ file }: { file: ArrayBuffer }) {
   const editorRef = useRef<DocxEditorRef>(null);
@@ -79,8 +79,8 @@ import {
   type DocxEditorRef,
   createEmptyDocument,
   type Document,
-} from '@eigenpal/docx-js-editor';
-import '@eigenpal/docx-js-editor/styles.css';
+} from '@giantanalyticsai/docx-js-editor';
+import '@giantanalyticsai/docx-js-editor/styles.css';
 
 function App() {
   const editorRef = useRef<DocxEditorRef>(null);
@@ -224,8 +224,8 @@ interface DocxEditorRef {
 For non-React apps or when you need imperative control:
 
 ```ts
-import { renderAsync } from '@eigenpal/docx-js-editor';
-import '@eigenpal/docx-js-editor/styles.css';
+import { renderAsync } from '@giantanalyticsai/docx-js-editor';
+import '@giantanalyticsai/docx-js-editor/styles.css';
 
 const container = document.getElementById('editor')!;
 const fileBuffer = await fetch('/template.docx').then((r) => r.arrayBuffer());
@@ -250,12 +250,12 @@ handle.destroy(); // Unmount and clean up
 
 The `DocumentAgent` class provides a high-level, immutable API for programmatic document manipulation. Every write operation returns a **new** `DocumentAgent` instance — the original is never mutated.
 
-Import from `@eigenpal/docx-js-editor/headless` (no React dependency).
+Import from `@giantanalyticsai/docx-js-editor/headless` (no React dependency).
 
 ### Creating an Agent
 
 ```ts
-import { DocumentAgent } from '@eigenpal/docx-js-editor/headless';
+import { DocumentAgent } from '@giantanalyticsai/docx-js-editor/headless';
 
 // From a DOCX buffer (async — parses the file)
 const agent = await DocumentAgent.fromBuffer(buffer);
@@ -366,7 +366,7 @@ import {
   processTemplateAsBlob,
   getTemplateTags,
   validateTemplate,
-} from '@eigenpal/docx-js-editor';
+} from '@giantanalyticsai/docx-js-editor';
 
 // Simple substitution — returns ArrayBuffer
 const result = processTemplate(templateBuffer, {
@@ -401,7 +401,7 @@ Plugins add UI panels, overlays, and ProseMirror extensions to the editor. Wrap 
 This is the actual working example from the repository:
 
 ```tsx
-import type { EditorPlugin, PluginPanelProps } from '@eigenpal/docx-js-editor';
+import type { EditorPlugin, PluginPanelProps } from '@giantanalyticsai/docx-js-editor';
 import React from 'react';
 
 interface WordCountState {
@@ -452,7 +452,7 @@ export const wordCountPlugin: EditorPlugin<WordCountState> = {
 ### Using a Plugin
 
 ```tsx
-import { DocxEditor, PluginHost, createEmptyDocument } from '@eigenpal/docx-js-editor';
+import { DocxEditor, PluginHost, createEmptyDocument } from '@giantanalyticsai/docx-js-editor';
 import { wordCountPlugin } from './wordCountPlugin';
 
 function App() {
@@ -474,7 +474,7 @@ import {
   PluginHost,
   templatePlugin,
   createEmptyDocument,
-} from '@eigenpal/docx-js-editor';
+} from '@giantanalyticsai/docx-js-editor';
 
 // From examples/plugins/docxtemplater:
 function App() {
@@ -656,7 +656,7 @@ import {
   emuToPixels,
   pointsToPixels,
   halfPointsToPixels,
-} from '@eigenpal/docx-js-editor';
+} from '@giantanalyticsai/docx-js-editor';
 
 twipsToPixels(1440); // 96 (1 inch at 96 DPI)
 pixelsToTwips(96); // 1440
@@ -668,7 +668,7 @@ halfPointsToPixels(24); // 16 (24 half-points = 12pt)
 ### Color Resolution
 
 ```ts
-import { resolveColor, createThemeColor, createRgbColor } from '@eigenpal/docx-js-editor';
+import { resolveColor, createThemeColor, createRgbColor } from '@giantanalyticsai/docx-js-editor';
 
 resolveColor({ type: 'theme', value: 'accent1' }, theme); // '#4472C4'
 resolveColor({ type: 'rgb', value: 'FF0000' }); // '#FF0000'
@@ -678,7 +678,7 @@ createRgbColor('FF0000'); // { type: 'rgb', value: 'FF0000' }
 ### Font Loading
 
 ```ts
-import { loadFont, loadFonts, isFontLoaded, onFontsLoaded } from '@eigenpal/docx-js-editor';
+import { loadFont, loadFonts, isFontLoaded, onFontsLoaded } from '@giantanalyticsai/docx-js-editor';
 
 await loadFont('Calibri', '/fonts/Calibri.ttf');
 await loadFonts([
@@ -725,8 +725,8 @@ import {
   type DocxEditorRef,
   createEmptyDocument,
   type Document,
-} from '@eigenpal/docx-js-editor';
-import '@eigenpal/docx-js-editor/styles.css';
+} from '@giantanalyticsai/docx-js-editor';
+import '@giantanalyticsai/docx-js-editor/styles.css';
 
 export function Editor() {
   const editorRef = useRef<DocxEditorRef>(null);
@@ -757,7 +757,7 @@ export function Editor() {
 
 ### Remix (from `examples/remix`)
 
-Same pattern — the `Editor` component imports `@eigenpal/docx-js-editor` and is used in a client-only route. The component code is identical to the Next.js editor component above.
+Same pattern — the `Editor` component imports `@giantanalyticsai/docx-js-editor` and is used in a client-only route. The component code is identical to the Next.js editor component above.
 
 ### Astro (from `examples/astro`)
 
@@ -788,8 +788,8 @@ const editorContainer = ref(null);
 let handle = null;
 
 onMounted(async () => {
-  const { renderAsync } = await import('@eigenpal/docx-js-editor');
-  await import('@eigenpal/docx-js-editor/styles.css');
+  const { renderAsync } = await import('@giantanalyticsai/docx-js-editor');
+  await import('@giantanalyticsai/docx-js-editor/styles.css');
   const buffer = await fetch('/template.docx').then((r) => r.arrayBuffer());
   handle = await renderAsync(buffer, editorContainer.value);
 });
@@ -847,7 +847,7 @@ const [readOnly, setReadOnly] = useState(false);
 From `examples/plugins/docxtemplater`:
 
 ```ts
-import { createEmptyDocument, type Document } from '@eigenpal/docx-js-editor';
+import { createEmptyDocument, type Document } from '@giantanalyticsai/docx-js-editor';
 
 function createTemplateDocument(): Document {
   const doc = createEmptyDocument();
@@ -913,7 +913,7 @@ function useResponsiveZoom() {
 The editor requires the DOM. Use dynamic imports in Next.js / SSR frameworks:
 
 ```tsx
-const DocxEditor = dynamic(() => import('@eigenpal/docx-js-editor').then((m) => m.DocxEditor), {
+const DocxEditor = dynamic(() => import('@giantanalyticsai/docx-js-editor').then((m) => m.DocxEditor), {
   ssr: false,
 });
 ```
@@ -932,7 +932,7 @@ The editor's CSS is scoped under `.ep-root`. This class is applied automatically
 
 ## Links
 
-- [npm package](https://www.npmjs.com/package/@eigenpal/docx-js-editor)
+- [npm package](https://www.npmjs.com/package/@giantanalyticsai/docx-js-editor)
 - [GitHub repository](https://github.com/eigenpal/docx-editor)
 - [Live demo](https://docx-editor.dev/editor)
 - [Props & Ref Methods](docs/PROPS.md)

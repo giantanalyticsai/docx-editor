@@ -9,8 +9,8 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import type { ParsedClipboardContent } from '@eigenpal/docx-core/utils/clipboard';
-import { readFromClipboard } from '@eigenpal/docx-core/utils/clipboard';
+import type { ParsedClipboardContent } from '@giantanalyticsai/docx-core/utils/clipboard';
+import { readFromClipboard } from '@giantanalyticsai/docx-core/utils/clipboard';
 
 // ============================================================================
 // TYPES

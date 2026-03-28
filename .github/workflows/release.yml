@@ -28,7 +28,7 @@ jobs:
         with:
           node-version: '24'
           registry-url: 'https://npm.pkg.github.com'
-          scope: '@eigenpal'
+          scope: '@giantanalyticsai'
 
       - run: bun install --frozen-lockfile
 

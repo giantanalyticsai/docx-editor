@@ -6,9 +6,9 @@ import type {
   Style,
   Theme,
   SectionProperties,
-} from '@eigenpal/docx-core/types/document';
-import { resolveColor } from '@eigenpal/docx-core/utils/colorResolver';
-import type { TableContextInfo } from '@eigenpal/docx-core/prosemirror';
+} from '@giantanalyticsai/docx-core/types/document';
+import { resolveColor } from '@giantanalyticsai/docx-core/utils/colorResolver';
+import type { TableContextInfo } from '@giantanalyticsai/docx-core/prosemirror';
 
 import type { FormattingAction, SelectionFormatting } from './toolbarTypes';
 import type { EditorMode } from './ui/EditingModeDropdown';

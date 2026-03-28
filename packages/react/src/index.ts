@@ -1,5 +1,5 @@
 /**
- * @eigenpal/docx-js-editor
+ * @giantanalyticsai/docx-js-editor
  *
  * A complete WYSIWYG DOCX editor with full Microsoft Word fidelity.
  *
@@ -16,7 +16,7 @@
  * CSS Styles:
  * For optimal cursor visibility and selection highlighting, import the editor styles:
  * ```
- * import '@eigenpal/docx-js-editor/styles/editor.css';
+ * import '@giantanalyticsai/docx-js-editor/styles/editor.css';
  * ```
  */
 
@@ -37,36 +37,36 @@ export {
   type EditorMode,
 } from './components/DocxEditor';
 export { renderAsync, type RenderAsyncOptions, type DocxEditorHandle } from './renderAsync';
-export { type DocxInput, toArrayBuffer } from '@eigenpal/docx-core/utils/docxInput';
+export { type DocxInput, toArrayBuffer } from '@giantanalyticsai/docx-core/utils/docxInput';
 
 // ============================================================================
 // AGENT API
 // ============================================================================
 
-export { DocumentAgent } from '@eigenpal/docx-core/agent/DocumentAgent';
-export { executeCommand, executeCommands } from '@eigenpal/docx-core/agent/executor';
+export { DocumentAgent } from '@giantanalyticsai/docx-core/agent/DocumentAgent';
+export { executeCommand, executeCommands } from '@giantanalyticsai/docx-core/agent/executor';
 export {
   getAgentContext,
   getDocumentSummary,
   type AgentContextOptions,
-} from '@eigenpal/docx-core/agent/context';
+} from '@giantanalyticsai/docx-core/agent/context';
 export {
   buildSelectionContext,
   buildExtendedSelectionContext,
   type SelectionContextOptions,
   type ExtendedSelectionContext,
-} from '@eigenpal/docx-core/agent/selectionContext';
+} from '@giantanalyticsai/docx-core/agent/selectionContext';
 
 // ============================================================================
 // PARSER / SERIALIZER
 // ============================================================================
 
-export { parseDocx } from '@eigenpal/docx-core/docx/parser';
+export { parseDocx } from '@giantanalyticsai/docx-core/docx/parser';
 export {
   serializeDocument as serializeDocx,
   serializeDocumentBody,
   serializeSectionProperties,
-} from '@eigenpal/docx-core/docx/serializer/documentSerializer';
+} from '@giantanalyticsai/docx-core/docx/serializer/documentSerializer';
 export {
   processTemplate,
   processTemplateDetailed,
@@ -75,7 +75,7 @@ export {
   validateTemplate,
   type ProcessTemplateOptions,
   type ProcessTemplateResult,
-} from '@eigenpal/docx-core/utils/processTemplate';
+} from '@giantanalyticsai/docx-core/utils/processTemplate';
 
 // ============================================================================
 // DOCUMENT CREATION
@@ -85,7 +85,7 @@ export {
   createEmptyDocument,
   createDocumentWithText,
   type CreateEmptyDocumentOptions,
-} from '@eigenpal/docx-core/utils/createDocument';
+} from '@giantanalyticsai/docx-core/utils/createDocument';
 
 // ============================================================================
 // FONT LOADER
@@ -101,7 +101,7 @@ export {
   onFontsLoaded,
   canRenderFont,
   preloadCommonFonts,
-} from '@eigenpal/docx-core/utils/fontLoader';
+} from '@giantanalyticsai/docx-core/utils/fontLoader';
 
 // ============================================================================
 // UI COMPONENTS
@@ -440,7 +440,7 @@ export type {
   NumberingDefinitions,
   Relationship,
   Comment,
-} from '@eigenpal/docx-core/types/document';
+} from '@giantanalyticsai/docx-core/types/document';
 
 // Agent API types
 export type {
@@ -463,7 +463,7 @@ export type {
   InsertHyperlinkCommand,
   SetVariableCommand,
   ApplyStyleCommand,
-} from '@eigenpal/docx-core/types/agentApi';
+} from '@giantanalyticsai/docx-core/types/agentApi';
 
 // ============================================================================
 // HOOKS
@@ -519,7 +519,7 @@ export {
   pixelsToEmu,
   emuToTwips,
   twipsToEmu,
-} from '@eigenpal/docx-core/utils/units';
+} from '@giantanalyticsai/docx-core/utils/units';
 export {
   resolveColor,
   resolveHighlightColor,
@@ -534,7 +534,7 @@ export {
   isBlack,
   isWhite,
   colorsEqual,
-} from '@eigenpal/docx-core/utils/colorResolver';
+} from '@giantanalyticsai/docx-core/utils/colorResolver';
 export {
   createPageBreak,
   createColumnBreak,
@@ -553,7 +553,7 @@ export {
   findPageBreaks,
   removePageBreak,
   type InsertPosition,
-} from '@eigenpal/docx-core/utils/insertOperations';
+} from '@giantanalyticsai/docx-core/utils/insertOperations';
 
 // Selection highlighting
 export {
@@ -589,7 +589,7 @@ export {
   type HighlightRect,
   type SelectionHighlightConfig,
   type SelectionRange,
-} from '@eigenpal/docx-core/utils/selectionHighlight';
+} from '@giantanalyticsai/docx-core/utils/selectionHighlight';
 
 // Text selection utilities for word/paragraph selection
 export {
@@ -606,7 +606,7 @@ export {
   createDoubleClickWordSelector,
   createTripleClickParagraphSelector,
   type WordSelectionResult,
-} from '@eigenpal/docx-core/utils/textSelection';
+} from '@giantanalyticsai/docx-core/utils/textSelection';
 
 // Keyboard navigation
 export {
@@ -644,7 +644,7 @@ export {
   NAVIGATION_SHORTCUTS,
   describeShortcut,
   getNavigationShortcutDescriptions,
-} from '@eigenpal/docx-core/utils/keyboardNavigation';
+} from '@giantanalyticsai/docx-core/utils/keyboardNavigation';
 
 // Clipboard utilities
 export {
@@ -675,7 +675,7 @@ export {
   type ClipboardContent,
   type ParsedClipboardContent,
   type ClipboardOptions,
-} from '@eigenpal/docx-core/utils/clipboard';
+} from '@giantanalyticsai/docx-core/utils/clipboard';
 
 // ============================================================================
 // PLUGIN API
@@ -708,7 +708,7 @@ export {
   replaceWithTracking,
   replaceNextWithTracking,
   type TextMatch,
-} from '@eigenpal/docx-core/prosemirror/commands/findAndReplace';
+} from '@giantanalyticsai/docx-core/prosemirror/commands/findAndReplace';
 
 // Template Plugin (Editor UI)
 export {
@@ -738,4 +738,4 @@ export {
   type McpToolHandler,
   type McpToolResult,
   type McpSession,
-} from '@eigenpal/docx-core/core-plugins';
+} from '@giantanalyticsai/docx-core/core-plugins';

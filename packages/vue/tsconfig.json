@@ -18,8 +18,8 @@
     "declarationMap": true,
     "baseUrl": ".",
     "paths": {
-      "@eigenpal/docx-core": ["../core/src/core.ts"],
-      "@eigenpal/docx-core/*": ["../core/src/*"]
+      "@giantanalyticsai/docx-core": ["../core/src/core.ts"],
+      "@giantanalyticsai/docx-core/*": ["../core/src/*"]
     }
   },
   "include": ["src"],

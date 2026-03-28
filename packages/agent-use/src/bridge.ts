@@ -1,11 +1,11 @@
 /**
  * Editor Bridge — connects agent tools to a live DocxEditor instance.
  *
- * Separate entry point: import from '@eigenpal/docx-editor-agents/bridge'
+ * Separate entry point: import from '@giantanalyticsai/docx-editor-agents/bridge'
  *
  * @example
  * ```ts
- * import { createEditorBridge, useAgentChat } from '@eigenpal/docx-editor-agents/bridge';
+ * import { createEditorBridge, useAgentChat } from '@giantanalyticsai/docx-editor-agents/bridge';
  *
  * // Hook (React) — simplest way
  * const { executeToolCall, toolSchemas } = useAgentChat({ editorRef, author: 'Assistant' });
@@ -110,15 +110,19 @@ function getCommentText(content: unknown[]): string {
  */
 function getDocumentBody(
   editorRef: EditorRefLike
-): import('@eigenpal/docx-core/headless').DocumentBody | null {
+): import('@giantanalyticsai/docx-core/headless').DocumentBody | null {
   // Prefer the live PM-based document (reflects user edits)
   const pagedRef = editorRef.getEditorRef();
   if (pagedRef) {
-    const doc = pagedRef.getDocument() as import('@eigenpal/docx-core/headless').Document | null;
+    const doc = pagedRef.getDocument() as
+      | import('@giantanalyticsai/docx-core/headless').Document
+      | null;
     if (doc?.package?.document) return doc.package.document;
   }
   // Fallback to the initial document
-  const doc = editorRef.getDocument() as import('@eigenpal/docx-core/headless').Document | null;
+  const doc = editorRef.getDocument() as
+    | import('@giantanalyticsai/docx-core/headless').Document
+    | null;
   return doc?.package?.document ?? null;
 }
 
