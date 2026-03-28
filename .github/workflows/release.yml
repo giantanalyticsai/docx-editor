@@ -14,22 +14,33 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@eigenpal'
+
       - run: bun install --frozen-lockfile
 
-      # When changeset files exist: opens a "Version Packages" PR.
-      # When that PR merges (no changeset files left): tags + GitHub Release.
+      - name: Build
+        run: bun run build
+
       - uses: changesets/action@v1
         with:
           version: bun run version-packages
-          publish: bun run release
+          publish: npx changeset publish
           title: 'chore: release packages'
           commit: 'chore: release packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
