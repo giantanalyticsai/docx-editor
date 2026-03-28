@@ -1,5 +1,11 @@
 # @giantanalyticsai/docx-js-editor
 
+## 1.0.0
+
+### Major Changes
+
+- [#5](https://github.com/giantanalyticsai/docx-editor/pull/5) [`9ea03eb`](https://github.com/giantanalyticsai/docx-editor/commit/9ea03ebf4dd3c8cc95baac6264b06ee574eba779) Thanks [@yash-giantanalytics](https://github.com/yash-giantanalytics)! - BREAKING: Rename package scope from @eigenpal to @giantanalyticsai for GitHub Packages publishing. Consumers must update all imports.
+
 ## 0.1.1
 
 ### Patch Changes
