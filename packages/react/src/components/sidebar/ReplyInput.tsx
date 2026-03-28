@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { submitButtonStyle, CANCEL_BUTTON_STYLE } from './cardUtils';
+import { MentionDropdown, type MentionProvider, type MentionUser } from './MentionDropdown';
 
 const ACTIVE_INPUT_STYLE: React.CSSProperties = {
   width: '100%',
@@ -28,12 +29,78 @@ const INACTIVE_INPUT_STYLE: React.CSSProperties = {
 };
 
 export interface ReplyInputProps {
-  onSubmit: (text: string) => void;
+  onSubmit: (text: string, mentions?: MentionUser[]) => void;
+  mentionProvider?: MentionProvider;
 }
 
-export function ReplyInput({ onSubmit }: ReplyInputProps) {
+export function ReplyInput({ onSubmit, mentionProvider }: ReplyInputProps) {
   const [active, setActive] = useState(false);
   const [text, setText] = useState('');
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentions, setMentions] = useState<MentionUser[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value;
+      setText(value);
+
+      if (!mentionProvider) {
+        setMentionQuery(null);
+        return;
+      }
+
+      // Detect @ trigger: find the last @ before cursor
+      const cursorPos = e.target.selectionStart ?? value.length;
+      const textBeforeCursor = value.slice(0, cursorPos);
+      const atIndex = textBeforeCursor.lastIndexOf('@');
+
+      if (atIndex >= 0) {
+        const charBefore = atIndex > 0 ? textBeforeCursor[atIndex - 1] : ' ';
+        // Only trigger if @ is at start or after a space
+        if (atIndex === 0 || charBefore === ' ') {
+          const query = textBeforeCursor.slice(atIndex + 1);
+          // Don't show dropdown if there's a space after the query (mention completed)
+          if (!query.includes(' ')) {
+            setMentionQuery(query);
+            return;
+          }
+        }
+      }
+      setMentionQuery(null);
+    },
+    [mentionProvider]
+  );
+
+  const handleMentionSelect = useCallback(
+    (user: MentionUser) => {
+      // Replace @query with @name
+      const cursorPos = inputRef.current?.selectionStart ?? text.length;
+      const textBeforeCursor = text.slice(0, cursorPos);
+      const atIndex = textBeforeCursor.lastIndexOf('@');
+      if (atIndex >= 0) {
+        const before = text.slice(0, atIndex);
+        const after = text.slice(cursorPos);
+        const newText = `${before}@${user.name} ${after}`;
+        setText(newText);
+        setMentions((prev) => [...prev, user]);
+      }
+      setMentionQuery(null);
+      inputRef.current?.focus();
+    },
+    [text]
+  );
+
+  const handleSubmit = useCallback(() => {
+    const trimmed = text.trim();
+    if (trimmed) {
+      onSubmit(trimmed, mentions.length > 0 ? mentions : undefined);
+    }
+    setText('');
+    setMentions([]);
+    setActive(false);
+    setMentionQuery(null);
+  }, [text, mentions, onSubmit]);
 
   if (!active) {
     return (
@@ -55,35 +122,54 @@ export function ReplyInput({ onSubmit }: ReplyInputProps) {
   const trimmed = text.trim();
 
   return (
-    <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 12 }}>
+    <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 12, position: 'relative' }}>
       <input
-        ref={(el) => el?.focus({ preventScroll: true })}
+        ref={(el) => {
+          (inputRef as React.MutableRefObject<HTMLInputElement | null>).current = el;
+          el?.focus({ preventScroll: true });
+        }}
         type="text"
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={handleChange}
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           e.stopPropagation();
+          // Let MentionDropdown handle Enter/ArrowUp/ArrowDown/Escape when open
+          if (
+            mentionQuery !== null &&
+            ['Enter', 'ArrowUp', 'ArrowDown', 'Escape'].includes(e.key)
+          ) {
+            return;
+          }
           if (e.key === 'Enter') {
             e.preventDefault();
-            if (trimmed) onSubmit(trimmed);
-            setText('');
-            setActive(false);
+            handleSubmit();
           }
           if (e.key === 'Escape') {
             setActive(false);
             setText('');
+            setMentionQuery(null);
           }
         }}
         placeholder="Reply or add others with @"
         style={ACTIVE_INPUT_STYLE}
       />
+      {mentionQuery !== null && mentionProvider && (
+        <MentionDropdown
+          query={mentionQuery}
+          provider={mentionProvider}
+          onSelect={handleMentionSelect}
+          onDismiss={() => setMentionQuery(null)}
+          anchorRef={inputRef}
+        />
+      )}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
         <button
           onClick={(e) => {
             e.stopPropagation();
             setActive(false);
             setText('');
+            setMentionQuery(null);
           }}
           style={CANCEL_BUTTON_STYLE}
         >
@@ -92,9 +178,7 @@ export function ReplyInput({ onSubmit }: ReplyInputProps) {
         <button
           onClick={(e) => {
             e.stopPropagation();
-            if (trimmed) onSubmit(trimmed);
-            setText('');
-            setActive(false);
+            handleSubmit();
           }}
           disabled={!trimmed}
           style={submitButtonStyle(!!trimmed)}

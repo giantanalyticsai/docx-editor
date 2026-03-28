@@ -13,6 +13,7 @@ import type { ReactNode } from 'react';
 import { MenuDropdown } from './ui/MenuDropdown';
 import type { MenuEntry } from './ui/MenuDropdown';
 import { TableGridInline } from './ui/TableGridInline';
+import { ToolbarTabs } from './ToolbarTabs';
 import { useEditorToolbar } from './EditorToolbarContext';
 import type { FormattingAction } from './Toolbar';
 
@@ -265,7 +266,7 @@ export function TitleBar({ children }: TitleBarProps) {
       logoItem = child;
     } else if (child.type === TitleBarRight) {
       rightItem = child;
-    } else if (child.type === MenuBar) {
+    } else if (child.type === MenuBar || child.type === ToolbarTabs) {
       menuBarItems.push(child);
     } else {
       middleTopItems.push(child);

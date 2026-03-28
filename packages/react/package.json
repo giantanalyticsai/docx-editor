@@ -92,6 +92,7 @@
   "dependencies": {
     "@radix-ui/react-select": "^2.2.6",
     "clsx": "^2.1.0",
+    "lucide-react": "^0.468.0",
     "prosemirror-commands": "^1.5.2",
     "prosemirror-dropcursor": "^1.8.2",
     "prosemirror-history": "^1.4.0",
@@ -116,7 +117,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/eigenpal/docx-js-editor.git",
+    "url": "https://github.com/giantanalyticsai/docx-editor.git",
     "directory": "packages/react"
   },
   "publishConfig": {

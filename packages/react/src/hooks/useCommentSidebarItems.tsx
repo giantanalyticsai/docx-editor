@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import type { Comment } from '@eigenpal/docx-core/types/content';
 import type { ReactSidebarItem } from '../plugin-api/types';
 import type { TrackedChangeEntry } from '../components/sidebar/cardUtils';
+import type { MentionProvider } from '../components/sidebar/MentionDropdown';
 import { CommentCard } from '../components/sidebar/CommentCard';
 import { TrackedChangeCard } from '../components/sidebar/TrackedChangeCard';
 import { AddCommentCard } from '../components/sidebar/AddCommentCard';
@@ -27,6 +28,8 @@ export interface UseCommentSidebarItemsProps {
   showResolved?: boolean;
   isAddingComment?: boolean;
   addCommentYPosition?: number | null;
+  /** Provider for @mention autocomplete in comment inputs */
+  mentionProvider?: MentionProvider;
 }
 
 export function useCommentSidebarItems({
@@ -36,6 +39,7 @@ export function useCommentSidebarItems({
   showResolved = false,
   isAddingComment = false,
   addCommentYPosition = null,
+  mentionProvider,
 }: UseCommentSidebarItemsProps): ReactSidebarItem[] {
   // Active comments always, resolved only when showResolved
   const visibleComments = useMemo(
@@ -78,6 +82,7 @@ export function useCommentSidebarItems({
             {...props}
             onSubmit={callbacks.onAddComment}
             onCancel={callbacks.onCancelAddComment}
+            mentionProvider={mentionProvider}
           />
         ),
       });
@@ -104,6 +109,7 @@ export function useCommentSidebarItems({
               onResolve={callbacks.onCommentResolve}
               onUnresolve={callbacks.onCommentUnresolve}
               onDelete={callbacks.onCommentDelete}
+              mentionProvider={mentionProvider}
             />
           ),
       });
@@ -126,6 +132,7 @@ export function useCommentSidebarItems({
             onAccept={callbacks.onAcceptChange}
             onReject={callbacks.onRejectChange}
             onReply={callbacks.onTrackedChangeReply}
+            mentionProvider={mentionProvider}
           />
         ),
       });
@@ -139,5 +146,6 @@ export function useCommentSidebarItems({
     callbacks,
     isAddingComment,
     addCommentYPosition,
+    mentionProvider,
   ]);
 }

@@ -91,13 +91,32 @@ export function TemplateHighlightOverlay({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Also observe the pagesContainer for size changes (zoom, layout changes)
+  // Observe the pagesContainer and its ancestors for size/layout changes.
+  // ResizeObserver catches zoom and content changes. Observing ancestors
+  // catches sidebar open/close which shifts the container position without
+  // changing its own size.
   useEffect(() => {
-    const observer = new ResizeObserver(() => {
-      requestAnimationFrame(() => setLayoutVersion((v) => v + 1));
-    });
+    const bump = () => requestAnimationFrame(() => setLayoutVersion((v) => v + 1));
+    const observer = new ResizeObserver(bump);
     observer.observe(context.pagesContainer);
-    return () => observer.disconnect();
+
+    // Walk up to observe parent layout shifts (sidebar toggle, panel resize)
+    let parent = context.pagesContainer.parentElement;
+    const observed: Element[] = [];
+    while (parent && observed.length < 5) {
+      observer.observe(parent);
+      observed.push(parent);
+      parent = parent.parentElement;
+    }
+
+    // Also catch CSS transition ends (sidebar slide animations)
+    const container = context.pagesContainer;
+    container.addEventListener('transitionend', bump);
+
+    return () => {
+      observer.disconnect();
+      container.removeEventListener('transitionend', bump);
+    };
   }, [context.pagesContainer]);
 
   // Show all highlights, with enhanced styling for hovered/selected

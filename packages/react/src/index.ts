@@ -122,8 +122,13 @@ export {
   type DocumentNameProps,
   type TitleBarRightProps,
   type FormattingBarProps,
+  type ReviewBarProps,
+  type ToolbarTabsProps,
 } from './components/EditorToolbar';
 export { FormattingBar } from './components/FormattingBar';
+export type { MentionProvider, MentionUser } from './components/sidebar/MentionDropdown';
+export { ReviewBar } from './components/ReviewBar';
+export { ToolbarTabs, type ToolbarTab } from './components/ToolbarTabs';
 export {
   ContextMenu,
   type ContextMenuProps,
@@ -696,6 +701,14 @@ export {
 // ============================================================================
 // PLUGINS
 // ============================================================================
+
+// Find & Replace with Track Changes
+export {
+  findTextPositions,
+  replaceWithTracking,
+  replaceNextWithTracking,
+  type TextMatch,
+} from '@eigenpal/docx-core/prosemirror/commands/findAndReplace';
 
 // Template Plugin (Editor UI)
 export {
