@@ -1,5 +1,11 @@
 # @giantanalyticsai/docx-collab
 
+## 1.0.1
+
+### Patch Changes
+
+- [#7](https://github.com/giantanalyticsai/docx-editor/pull/7) [`8184d6e`](https://github.com/giantanalyticsai/docx-editor/commit/8184d6e11b8c0864c902de1986d382417a6004b3) Thanks [@yash-giantanalytics](https://github.com/yash-giantanalytics)! - Fix: include collab package in monorepo build script so dist/ is built before publish
+
 ## 1.0.0
 
 ### Major Changes
