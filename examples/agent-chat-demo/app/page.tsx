@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { DocxEditor, type DocxEditorRef } from '@eigenpal/docx-js-editor';
-import { useAgentChat, type EditorRefLike } from '@eigenpal/docx-editor-agents/bridge';
+import { DocxEditor, type DocxEditorRef } from '@giantanalyticsai/docx-js-editor';
+import { useAgentChat, type EditorRefLike } from '@giantanalyticsai/docx-editor-agents/bridge';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -255,10 +255,10 @@ export default function Home() {
           <div style={styles.footer}>
             Powered by{' '}
             <a
-              href="https://www.npmjs.com/package/@eigenpal/docx-editor-agents"
+              href="https://www.npmjs.com/package/@giantanalyticsai/docx-editor-agents"
               style={styles.link}
             >
-              @eigenpal/docx-editor-agents
+              @giantanalyticsai/docx-editor-agents
             </a>
           </div>
         </div>

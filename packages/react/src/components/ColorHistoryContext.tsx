@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { ColorValue } from '@eigenpal/docx-core/types/document';
+import type { ColorValue } from '@giantanalyticsai/docx-core/types/document';
 
 type ColorHistory = {
   lastTextColor: ColorValue | string;

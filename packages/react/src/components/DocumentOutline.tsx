@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import type { HeadingInfo } from '@eigenpal/docx-core/utils/headingCollector';
+import type { HeadingInfo } from '@giantanalyticsai/docx-core/utils/headingCollector';
 import { MaterialSymbol } from './ui/Icons';
 
 /** @deprecated Use HeadingInfo from utils/headingCollector instead */

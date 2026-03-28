@@ -32,7 +32,7 @@ Source: [`examples/plugins/docxtemplater/`](../../examples/plugins/docxtemplater
 Client-side spellcheck with red squiggles and right-click suggestions.
 
 ```tsx
-import { DocxEditor, PluginHost, spellcheckPlugin } from '@eigenpal/docx-js-editor';
+import { DocxEditor, PluginHost, spellcheckPlugin } from '@giantanalyticsai/docx-js-editor';
 
 <PluginHost plugins={[spellcheckPlugin]}>
   <DocxEditor documentBuffer={file} />

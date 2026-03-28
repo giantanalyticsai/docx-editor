@@ -1,4 +1,4 @@
-import type { SectionProperties } from '@eigenpal/docx-core/types/document';
+import type { SectionProperties } from '@giantanalyticsai/docx-core/types/document';
 import type { MenuEntry } from './MenuDropdown';
 import { MenuDropdown } from './MenuDropdown';
 import {

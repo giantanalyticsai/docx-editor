@@ -1,5 +1,5 @@
 /**
- * Types for @eigenpal/docx-editor-agents
+ * Types for @giantanalyticsai/docx-editor-agents
  */
 
 // ============================================================================

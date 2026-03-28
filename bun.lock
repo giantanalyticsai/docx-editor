@@ -37,8 +37,8 @@
       },
     },
     "packages/agent-use": {
-      "name": "@eigenpal/docx-editor-agents",
-      "version": "0.0.31",
+      "name": "@giantanalyticsai/docx-editor-agents",
+      "version": "0.1.1",
       "dependencies": {
         "docxtemplater": "^3.50.0",
         "jszip": "^3.10.1",
@@ -47,8 +47,8 @@
       },
     },
     "packages/collab": {
-      "name": "@eigenpal/docx-collab",
-      "version": "0.0.1",
+      "name": "@giantanalyticsai/docx-collab",
+      "version": "0.1.1",
       "dependencies": {
         "@hocuspocus/extension-database": "^3.4.4",
         "@hocuspocus/provider": "^3.4.4",
@@ -69,7 +69,7 @@
       },
     },
     "packages/core": {
-      "name": "@eigenpal/docx-core",
+      "name": "@giantanalyticsai/docx-core",
       "version": "0.0.28",
       "bin": {
         "docx-editor-mcp": "./dist/mcp-cli.mjs",
@@ -91,8 +91,8 @@
       },
     },
     "packages/react": {
-      "name": "@eigenpal/docx-js-editor",
-      "version": "0.0.31",
+      "name": "@giantanalyticsai/docx-js-editor",
+      "version": "0.1.1",
       "dependencies": {
         "@radix-ui/react-select": "^2.2.6",
         "clsx": "^2.1.0",
@@ -118,10 +118,10 @@
       ],
     },
     "packages/vue": {
-      "name": "@eigenpal/docx-editor-vue",
+      "name": "@giantanalyticsai/docx-editor-vue",
       "version": "0.0.1",
       "dependencies": {
-        "@eigenpal/docx-core": "workspace:*",
+        "@giantanalyticsai/docx-core": "workspace:*",
       },
       "devDependencies": {
         "prosemirror-view": "^1.41.6",
@@ -212,16 +212,6 @@
 
     "@changesets/write": ["@changesets/write@0.4.0", "", { "dependencies": { "@changesets/types": "^6.1.0", "fs-extra": "^7.0.1", "human-id": "^4.1.1", "prettier": "^2.7.1" } }, "sha512-CdTLvIOPiCNuH71pyDu3rA+Q0n65cmAbXnwWH84rKGiFumFzkmHNT8KHTMEchcxN+Kl8I54xGUhJ7l3E7X396Q=="],
 
-    "@eigenpal/docx-collab": ["@eigenpal/docx-collab@workspace:packages/collab"],
-
-    "@eigenpal/docx-core": ["@eigenpal/docx-core@workspace:packages/core"],
-
-    "@eigenpal/docx-editor-agents": ["@eigenpal/docx-editor-agents@workspace:packages/agent-use"],
-
-    "@eigenpal/docx-editor-vue": ["@eigenpal/docx-editor-vue@workspace:packages/vue"],
-
-    "@eigenpal/docx-js-editor": ["@eigenpal/docx-js-editor@workspace:packages/react"],
-
     "@esbuild/aix-ppc64": ["@esbuild/aix-ppc64@0.27.4", "", { "os": "aix", "cpu": "ppc64" }, "sha512-cQPwL2mp2nSmHHJlCyoXgHGhbEPMrEEU5xhkcy3Hs/O7nGZqEpZ2sUtLaL9MORLtDfRvVl2/3PAuEkYZH0Ty8Q=="],
 
     "@esbuild/android-arm": ["@esbuild/android-arm@0.27.4", "", { "os": "android", "cpu": "arm" }, "sha512-X9bUgvxiC8CHAGKYufLIHGXPJWnr0OCdR0anD2e21vdvgCI8lIfqFbnoeOz7lBjdrAGUhqLZLcQo6MLhTO2DKQ=="],
@@ -295,6 +285,16 @@
     "@floating-ui/react-dom": ["@floating-ui/react-dom@2.1.8", "", { "dependencies": { "@floating-ui/dom": "^1.7.6" }, "peerDependencies": { "react": ">=16.8.0", "react-dom": ">=16.8.0" } }, "sha512-cC52bHwM/n/CxS87FH0yWdngEZrjdtLW/qVruo68qg+prK7ZQ4YGdut2GyDVpoGeAYe/h899rVeOVm6Oi40k2A=="],
 
     "@floating-ui/utils": ["@floating-ui/utils@0.2.11", "", {}, "sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg=="],
+
+    "@giantanalyticsai/docx-collab": ["@giantanalyticsai/docx-collab@workspace:packages/collab"],
+
+    "@giantanalyticsai/docx-core": ["@giantanalyticsai/docx-core@workspace:packages/core"],
+
+    "@giantanalyticsai/docx-editor-agents": ["@giantanalyticsai/docx-editor-agents@workspace:packages/agent-use"],
+
+    "@giantanalyticsai/docx-editor-vue": ["@giantanalyticsai/docx-editor-vue@workspace:packages/vue"],
+
+    "@giantanalyticsai/docx-js-editor": ["@giantanalyticsai/docx-js-editor@workspace:packages/react"],
 
     "@happy-dom/global-registrator": ["@happy-dom/global-registrator@20.8.8", "", { "dependencies": { "@types/node": ">=20.0.0", "happy-dom": "^20.8.8" } }, "sha512-2NE+gfUX092su6oZYw6yOfgPYAfx9NBLFdMLNdZZtkupCP9oZfz6qFRYf1o8la2Le7Tyb94O5TONzcozENx2xg=="],
 

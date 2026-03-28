@@ -1,4 +1,4 @@
-import type { Endnote, Footnote, Paragraph } from '@eigenpal/docx-core/types/document';
+import type { Endnote, Footnote, Paragraph } from '@giantanalyticsai/docx-core/types/document';
 
 function createEmptyParagraph(): Paragraph {
   return { type: 'paragraph', content: [] };

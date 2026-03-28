@@ -1,4 +1,4 @@
-import type { Comment } from '@eigenpal/docx-core/types/content';
+import type { Comment } from '@giantanalyticsai/docx-core/types/content';
 import { getCommentText, formatDate, getInitials, avatarStyle } from './cardUtils';
 
 export interface ReplyThreadProps {

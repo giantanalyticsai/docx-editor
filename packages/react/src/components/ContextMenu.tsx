@@ -6,12 +6,12 @@
  */
 
 import React, { useEffect, useRef, useCallback, useState } from 'react';
-import type { AIAction, SelectionContext } from '@eigenpal/docx-core/types/agentApi';
+import type { AIAction, SelectionContext } from '@giantanalyticsai/docx-core/types/agentApi';
 import {
   getActionLabel,
   getActionDescription,
   DEFAULT_AI_ACTIONS,
-} from '@eigenpal/docx-core/types/agentApi';
+} from '@giantanalyticsai/docx-core/types/agentApi';
 
 // ============================================================================
 // TYPES

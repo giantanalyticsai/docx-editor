@@ -1,4 +1,4 @@
-# @eigenpal/docx-collab
+# @giantanalyticsai/docx-collab
 
 ## 0.1.1
 

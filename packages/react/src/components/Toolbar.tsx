@@ -11,7 +11,7 @@
 
 import React, { Fragment, useEffect, useRef } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import type { ColorValue, Style, Theme } from '@eigenpal/docx-core/types/document';
+import type { ColorValue, Style, Theme } from '@giantanalyticsai/docx-core/types/document';
 import type { FormattingAction, SelectionFormatting } from './toolbarTypes';
 import { useToolbarItems } from './toolbarItems';
 import { Button } from './ui/Button';

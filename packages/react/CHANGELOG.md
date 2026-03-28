@@ -1,4 +1,4 @@
-# @eigenpal/docx-js-editor
+# @giantanalyticsai/docx-js-editor
 
 ## 0.1.1
 

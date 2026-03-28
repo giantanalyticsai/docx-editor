@@ -9,8 +9,8 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import type { CSSProperties } from 'react';
-import type { SectionProperties } from '@eigenpal/docx-core/types/document';
-import { TWIPS_PER_INCH } from '@eigenpal/docx-core/utils/units';
+import type { SectionProperties } from '@giantanalyticsai/docx-core/types/document';
+import { TWIPS_PER_INCH } from '@giantanalyticsai/docx-core/utils/units';
 
 /** Common page sizes in twips (width x height in portrait orientation) */
 const PAGE_SIZES = [

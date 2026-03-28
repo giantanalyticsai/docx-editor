@@ -6,8 +6,8 @@
  */
 
 import { useCallback } from 'react';
-import type { ColorValue } from '@eigenpal/docx-core/types/document';
-import type { Theme } from '@eigenpal/docx-core/types/document';
+import type { ColorValue } from '@giantanalyticsai/docx-core/types/document';
+import type { Theme } from '@giantanalyticsai/docx-core/types/document';
 import type { TableAction } from './TableToolbar';
 import { AdvancedColorPicker } from './AdvancedColorPicker';
 

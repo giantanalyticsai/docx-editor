@@ -1,4 +1,4 @@
-import type { ColorValue, ParagraphAlignment } from '@eigenpal/docx-core/types/document';
+import type { ColorValue, ParagraphAlignment } from '@giantanalyticsai/docx-core/types/document';
 import type { ListState } from './ui/ListButtons';
 
 /**

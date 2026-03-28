@@ -8,7 +8,7 @@
 import * as React from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger } from './Select';
 import { cn } from '../../lib/utils';
-import type { Style, StyleType, Theme } from '@eigenpal/docx-core/types/document';
+import type { Style, StyleType, Theme } from '@giantanalyticsai/docx-core/types/document';
 
 // ============================================================================
 // TYPES

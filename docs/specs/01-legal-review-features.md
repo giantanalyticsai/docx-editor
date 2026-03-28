@@ -60,7 +60,7 @@ if (range) {
 
 **Imported from (already exist):**
 
-- `acceptAllChanges`, `rejectAllChanges`, `findNextChange`, `findPreviousChange` from `@eigenpal/docx-core/prosemirror/commands/comments`
+- `acceptAllChanges`, `rejectAllChanges`, `findNextChange`, `findPreviousChange` from `@giantanalyticsai/docx-core/prosemirror/commands/comments`
 
 **Icons (MaterialSymbol):** `done_all` (accept all), `close` (reject all), `navigate_before`, `navigate_next`
 

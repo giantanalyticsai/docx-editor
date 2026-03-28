@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import type { Footnote } from '@eigenpal/docx-core/types/document';
+import type { Footnote } from '@giantanalyticsai/docx-core/types/document';
 import { getNextNoteId, createEmptyFootnote, createEmptyEndnote } from './footnoteUtils';
 
 describe('getNextNoteId', () => {

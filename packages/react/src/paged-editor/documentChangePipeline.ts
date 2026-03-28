@@ -1,12 +1,12 @@
 import { Node as PMNode } from 'prosemirror-model';
-import { schema } from '@eigenpal/docx-core/prosemirror/schema';
-import type { Document, Paragraph, Table } from '@eigenpal/docx-core/types/document';
+import { schema } from '@giantanalyticsai/docx-core/prosemirror/schema';
+import type { Document, Paragraph, Table } from '@giantanalyticsai/docx-core/types/document';
 import {
   fromProseDoc,
   buildTrackedChangeCounts,
   convertTopLevelNode,
-} from '@eigenpal/docx-core/prosemirror/conversion/fromProseDoc';
-import { mergeDocumentBlocks } from '@eigenpal/docx-core/prosemirror/conversion/mergeDocumentBlocks';
+} from '@giantanalyticsai/docx-core/prosemirror/conversion/fromProseDoc';
+import { mergeDocumentBlocks } from '@giantanalyticsai/docx-core/prosemirror/conversion/mergeDocumentBlocks';
 import { computeDebounceDelay } from './documentChangeScheduler';
 import { createWorkerClient } from './pmDocumentWorkerClient';
 

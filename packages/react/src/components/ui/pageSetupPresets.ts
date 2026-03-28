@@ -1,4 +1,4 @@
-import type { SectionProperties, PageOrientation } from '@eigenpal/docx-core/types/document';
+import type { SectionProperties, PageOrientation } from '@giantanalyticsai/docx-core/types/document';
 
 const TOLERANCE_TWIPS = 20;
 
