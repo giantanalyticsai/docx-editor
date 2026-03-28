@@ -11,7 +11,11 @@
 
 import React from 'react';
 import type { CSSProperties } from 'react';
-import type { TabStop, TabLeader, TabStopAlignment } from '@giantanalyticsai/docx-core/types/document';
+import type {
+  TabStop,
+  TabLeader,
+  TabStopAlignment,
+} from '@giantanalyticsai/docx-core/types/document';
 import { twipsToPixels } from '@giantanalyticsai/docx-core/utils/units';
 import {
   getNextTabStop,

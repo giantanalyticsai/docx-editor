@@ -14,7 +14,11 @@
 
 import React from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import type { TextBox as TextBoxType, Paragraph, Table } from '@giantanalyticsai/docx-core/types/document';
+import type {
+  TextBox as TextBoxType,
+  Paragraph,
+  Table,
+} from '@giantanalyticsai/docx-core/types/document';
 import {
   getTextBoxDimensionsPx,
   getTextBoxWidthPx,

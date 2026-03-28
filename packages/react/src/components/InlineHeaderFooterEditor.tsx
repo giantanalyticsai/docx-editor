@@ -24,7 +24,10 @@ import { undo, redo } from 'prosemirror-history';
 import { schema } from '@giantanalyticsai/docx-core/prosemirror/schema';
 import { headerFooterToProseDoc } from '@giantanalyticsai/docx-core/prosemirror/conversion/toProseDoc';
 import { proseDocToBlocks } from '@giantanalyticsai/docx-core/prosemirror/conversion/fromProseDoc';
-import { extractSelectionState, type SelectionState } from '@giantanalyticsai/docx-core/prosemirror';
+import {
+  extractSelectionState,
+  type SelectionState,
+} from '@giantanalyticsai/docx-core/prosemirror';
 import { createStarterKit } from '@giantanalyticsai/docx-core/prosemirror/extensions/StarterKit';
 import { ExtensionManager } from '@giantanalyticsai/docx-core/prosemirror/extensions/ExtensionManager';
 import { createStyleResolver } from '@giantanalyticsai/docx-core/prosemirror';

@@ -1,6 +1,10 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import type { CSSProperties } from 'react';
-import type { ColorValue, Theme, ThemeColorScheme } from '@giantanalyticsai/docx-core/types/document';
+import type {
+  ColorValue,
+  Theme,
+  ThemeColorScheme,
+} from '@giantanalyticsai/docx-core/types/document';
 import {
   generateThemeTintShadeMatrix,
   resolveColor,

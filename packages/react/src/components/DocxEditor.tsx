@@ -45,7 +45,11 @@ import type { ReactSidebarItem } from '../plugin-api/types';
 import { ColorHistoryProvider } from './ColorHistoryContext';
 import { createEmptyEndnote, createEmptyFootnote, getNextNoteId } from './footnoteUtils';
 import type { HeadingInfo } from '@giantanalyticsai/docx-core/utils/headingCollector';
-import type { Comment, BlockContent, ParagraphContent } from '@giantanalyticsai/docx-core/types/content';
+import type {
+  Comment,
+  BlockContent,
+  ParagraphContent,
+} from '@giantanalyticsai/docx-core/types/content';
 import { ErrorBoundary, ErrorProvider } from './ErrorBoundary';
 import type { TableAction } from './ui/TableToolbar';
 import { mapHexToHighlightName } from './toolbarUtils';

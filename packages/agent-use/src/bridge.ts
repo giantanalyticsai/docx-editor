@@ -114,11 +114,15 @@ function getDocumentBody(
   // Prefer the live PM-based document (reflects user edits)
   const pagedRef = editorRef.getEditorRef();
   if (pagedRef) {
-    const doc = pagedRef.getDocument() as import('@giantanalyticsai/docx-core/headless').Document | null;
+    const doc = pagedRef.getDocument() as
+      | import('@giantanalyticsai/docx-core/headless').Document
+      | null;
     if (doc?.package?.document) return doc.package.document;
   }
   // Fallback to the initial document
-  const doc = editorRef.getDocument() as import('@giantanalyticsai/docx-core/headless').Document | null;
+  const doc = editorRef.getDocument() as
+    | import('@giantanalyticsai/docx-core/headless').Document
+    | null;
   return doc?.package?.document ?? null;
 }
 
