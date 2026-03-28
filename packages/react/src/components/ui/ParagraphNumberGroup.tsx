@@ -75,7 +75,13 @@ function countDecimals(step: number) {
   return dotIndex >= 0 ? stepString.length - dotIndex - 1 : 0;
 }
 
-function ParagraphNumberRowInput({ row, disabled }: { row: ParagraphNumberRow; disabled: boolean }) {
+function ParagraphNumberRowInput({
+  row,
+  disabled,
+}: {
+  row: ParagraphNumberRow;
+  disabled: boolean;
+}) {
   const decimals = useMemo(() => countDecimals(row.step), [row.step]);
   const formatValue = useCallback(
     (value: number) => (decimals > 0 ? value.toFixed(decimals) : Math.round(value).toString()),

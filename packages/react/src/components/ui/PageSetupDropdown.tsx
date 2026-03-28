@@ -30,7 +30,8 @@ export function PageSetupDropdown({
   disabled?: boolean;
   testId?: string;
 }) {
-  const triggerLabel = kind === 'margins' ? 'Margins' : kind === 'orientation' ? 'Orientation' : 'Size';
+  const triggerLabel =
+    kind === 'margins' ? 'Margins' : kind === 'orientation' ? 'Orientation' : 'Size';
   const activeMargin = getMarginPresetId(sectionProperties);
   const activeSize = getPageSizePresetId(sectionProperties);
   const activeOrientation = getOrientation(sectionProperties);
@@ -55,43 +56,44 @@ export function PageSetupDropdown({
           },
         ]
       : kind === 'orientation'
-      ? [
-          {
-            label: 'Portrait',
-            checked: activeOrientation === 'portrait',
-            onClick: () => onApply?.(buildOrientationProps('portrait', sectionProperties)),
-            disabled: applyDisabled,
-          },
-          {
-            label: 'Landscape',
-            checked: activeOrientation === 'landscape',
-            onClick: () => onApply?.(buildOrientationProps('landscape', sectionProperties)),
-            disabled: applyDisabled,
-          },
-          { type: 'separator' as const },
-          {
-            label: 'Page Setup...',
-            onClick: onOpenDialog,
-            disabled: dialogDisabled,
-          },
-        ]
-      : [
-          ...PAGE_SIZE_PRESETS.map((preset) => ({
-            label: preset.label,
-            checked: activeSize === preset.id,
-            onClick: () => onApply?.(buildPageSizeProps(preset.id, sectionProperties)),
-            disabled: applyDisabled,
-          })),
-          { type: 'separator' as const },
-          {
-            label: 'More Paper Sizes...',
-            checked: activeSize === 'custom',
-            onClick: onOpenDialog,
-            disabled: dialogDisabled,
-          },
-        ];
+        ? [
+            {
+              label: 'Portrait',
+              checked: activeOrientation === 'portrait',
+              onClick: () => onApply?.(buildOrientationProps('portrait', sectionProperties)),
+              disabled: applyDisabled,
+            },
+            {
+              label: 'Landscape',
+              checked: activeOrientation === 'landscape',
+              onClick: () => onApply?.(buildOrientationProps('landscape', sectionProperties)),
+              disabled: applyDisabled,
+            },
+            { type: 'separator' as const },
+            {
+              label: 'Page Setup...',
+              onClick: onOpenDialog,
+              disabled: dialogDisabled,
+            },
+          ]
+        : [
+            ...PAGE_SIZE_PRESETS.map((preset) => ({
+              label: preset.label,
+              checked: activeSize === preset.id,
+              onClick: () => onApply?.(buildPageSizeProps(preset.id, sectionProperties)),
+              disabled: applyDisabled,
+            })),
+            { type: 'separator' as const },
+            {
+              label: 'More Paper Sizes...',
+              checked: activeSize === 'custom',
+              onClick: onOpenDialog,
+              disabled: dialogDisabled,
+            },
+          ];
 
-  const iconName = kind === 'margins' ? 'padding' : kind === 'orientation' ? 'swap_horiz' : 'fit_width';
+  const iconName =
+    kind === 'margins' ? 'padding' : kind === 'orientation' ? 'swap_horiz' : 'fit_width';
 
   return (
     <MenuDropdown

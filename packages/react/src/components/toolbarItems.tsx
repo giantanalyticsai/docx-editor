@@ -294,12 +294,8 @@ export function useToolbarItems(options: UseToolbarItemsOptions): {
   } = options;
 
   const isReadOnly = readOnly || editingMode === 'viewing';
-  const {
-    lastTextColor,
-    lastHighlightColor,
-    setLastTextColor,
-    setLastHighlightColor,
-  } = useColorHistory();
+  const { lastTextColor, lastHighlightColor, setLastTextColor, setLastHighlightColor } =
+    useColorHistory();
   const [formattingOverrides, setFormattingOverrides] = useState<
     Pick<
       SelectionFormatting,

@@ -55,7 +55,11 @@ export function getMarginPresetId(props?: SectionProperties | null): string | 'c
   const left = props?.marginLeft ?? DEFAULT_MARGIN;
   const right = props?.marginRight ?? DEFAULT_MARGIN;
   const match = MARGIN_PRESETS.find(
-    (p) => isClose(p.top, top) && isClose(p.bottom, bottom) && isClose(p.left, left) && isClose(p.right, right)
+    (p) =>
+      isClose(p.top, top) &&
+      isClose(p.bottom, bottom) &&
+      isClose(p.left, left) &&
+      isClose(p.right, right)
   );
   return match?.id ?? 'custom';
 }

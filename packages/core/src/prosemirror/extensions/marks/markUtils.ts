@@ -324,10 +324,7 @@ export function createRemoveMarkCommand(markType: MarkType): Command {
 /**
  * Toggle a mark, ensuring empty-paragraph defaults are updated.
  */
-export function toggleMarkWithStoredMarks(
-  markType: MarkType,
-  attrs: MarkAttrs = {}
-): Command {
+export function toggleMarkWithStoredMarks(markType: MarkType, attrs: MarkAttrs = {}): Command {
   return (state, dispatch, view) => {
     const { empty } = state.selection;
 

@@ -10,8 +10,18 @@ describe('getNextNoteId', () => {
   it('ignores separators and returns max+1', () => {
     const notes: Footnote[] = [
       { type: 'footnote', id: -1, noteType: 'separator', content: [] },
-      { type: 'footnote', id: 1, noteType: 'normal', content: [{ type: 'paragraph', content: [] }] },
-      { type: 'footnote', id: 3, noteType: 'normal', content: [{ type: 'paragraph', content: [] }] },
+      {
+        type: 'footnote',
+        id: 1,
+        noteType: 'normal',
+        content: [{ type: 'paragraph', content: [] }],
+      },
+      {
+        type: 'footnote',
+        id: 3,
+        noteType: 'normal',
+        content: [{ type: 'paragraph', content: [] }],
+      },
     ];
     expect(getNextNoteId(notes)).toBe(4);
   });
