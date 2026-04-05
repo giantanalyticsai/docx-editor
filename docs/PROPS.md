@@ -10,6 +10,7 @@
 | `mode`                    | `'editing' \| 'suggesting' \| 'viewing'`    | `'editing'`       | Editor mode — editing, suggesting (track changes), or viewing (read-only with toolbar) |
 | `onModeChange`            | `(mode: EditorMode) => void`                | —                 | Called when the user changes the editing mode                                          |
 | `readOnly`                | `boolean`                                   | `false`           | Read-only preview (toolbar hidden unless `showToolbarWhenReadOnly` is true)            |
+| `collaborative`           | `boolean`                                   | `false`           | Skip mount-time document loading — external plugins manage content                     |
 | `showToolbar`             | `boolean`                                   | `true`            | Show the toolbar area                                                                  |
 | `toolbar`                 | `'compact' \| 'ribbon'`                     | `'compact'`       | Toolbar mode. Defaults to compact; ribbon is opt-in                                    |
 | `showToolbarWhenReadOnly` | `boolean`                                   | —                 | Show toolbar in read-only (defaults to `true` for ribbon, `false` for compact)         |
@@ -71,3 +72,22 @@ Use `readOnly` for a preview-only viewer. This disables editing, caret, and sele
 ```tsx
 <DocxEditor documentBuffer={file} readOnly />
 ```
+
+## Collaborative Editing
+
+When using external collaboration plugins (e.g., `ySyncPlugin` from `y-prosemirror`) that manage ProseMirror content from an external source, set `collaborative` to prevent the editor from overwriting plugin-managed content on mount:
+
+```tsx
+import { useMemo } from 'react';
+import { DocxEditor, createEmptyDocument } from '@eigenpal/docx-js-editor';
+import { ySyncPlugin, yUndoPlugin } from 'y-prosemirror';
+
+function CollaborativeEditor({ ydoc }) {
+  const fragment = ydoc.getXmlFragment('prosemirror');
+  const plugins = useMemo(() => [ySyncPlugin(fragment), yUndoPlugin()], [fragment]);
+
+  return <DocxEditor document={createEmptyDocument()} externalPlugins={plugins} collaborative />;
+}
+```
+
+**Why this is needed:** Without `collaborative`, DocxEditor's internal `useEffect` calls `loadDocument()` on mount, which resets ProseMirror state. When `ySyncPlugin` has already populated ProseMirror with content from Y.Doc, this reset destroys that content and syncs the empty state back to Y.Doc.
