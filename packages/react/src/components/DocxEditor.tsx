@@ -242,6 +242,19 @@ export interface DocxEditorProps {
   onFontsLoaded?: () => void;
   /** External ProseMirror plugins (from PluginHost) */
   externalPlugins?: import('prosemirror-state').Plugin[];
+  /**
+   * When true, external ProseMirror plugins (passed via `externalPlugins`)
+   * manage the document content lifecycle. The editor will not call
+   * `loadDocument()` or `loadDocumentBuffer()` on mount, preventing
+   * the internal useEffect from resetting ProseMirror state.
+   *
+   * Use this with collaboration plugins like `ySyncPlugin` from `y-prosemirror`
+   * that populate ProseMirror content from an external source (e.g., Y.Doc).
+   *
+   * You must still pass a `document` prop (e.g., `createEmptyDocument()`) to
+   * initialize the ProseMirror schema and editor shell.
+   */
+  collaborative?: boolean;
   /** Callback when editor view is ready (for PluginHost) */
   onEditorViewReady?: (view: import('prosemirror-view').EditorView) => void;
   /** Theme for styling */
@@ -809,6 +822,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     onCommentDelete,
     onCommentReply,
     externalPlugins,
+    collaborative = false,
     onEditorViewReady,
     onRenderedDomContextReady,
     pluginOverlays,
@@ -825,7 +839,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
 ) {
   // State
   const [state, setState] = useState<EditorState>({
-    isLoading: !!documentBuffer,
+    isLoading: !!documentBuffer && !collaborative,
     parseError: null,
     zoom: initialZoom,
     selectionFormatting: {},
@@ -1316,6 +1330,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
 
   // React to document/documentBuffer prop changes
   useEffect(() => {
+    // In collaborative mode, external plugins manage content — skip document loading.
+    if (collaborative) return;
+
     if (!documentBuffer) {
       if (initialDocument) {
         loadParsedDocument(initialDocument);
@@ -1324,7 +1341,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     }
 
     loadBuffer(documentBuffer);
-  }, [documentBuffer, initialDocument]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [documentBuffer, initialDocument, collaborative]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Create/update agent when document changes
   useEffect(() => {
