@@ -271,6 +271,14 @@ const HiddenProseMirrorComponent = forwardRef<HiddenProseMirrorRef, HiddenProseM
 
       viewRef.current = new EditorView(hostRef.current, editorProps);
 
+      // Mark as initialized so the document-change effect skips the redundant
+      // first-mount updateState (createView already set the initial state).
+      isInitializedRef.current = true;
+      const meta = document?.package?.properties;
+      lastDocumentIdRef.current = document
+        ? `${meta?.created || ''}-${meta?.modified || ''}-${meta?.title || ''}`
+        : 'empty';
+
       // Notify that view is ready (use ref to avoid dependency issues)
       onEditorViewReadyRef.current?.(viewRef.current);
     }, [
