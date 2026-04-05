@@ -68,10 +68,11 @@ Use `readOnly` for a preview-only viewer. This disables editing, caret, and sele
 When using external collaboration plugins (e.g., `ySyncPlugin` from `y-prosemirror`) that manage ProseMirror content from an external source, set `collaborative` to prevent the editor from overwriting plugin-managed content on mount:
 
 ```tsx
+import { useMemo } from 'react';
 import { DocxEditor, createEmptyDocument } from '@eigenpal/docx-js-editor';
 import { ySyncPlugin, yUndoPlugin } from 'y-prosemirror';
 
-function CollaborativeEditor({ ydoc, provider }) {
+function CollaborativeEditor({ ydoc }) {
   const fragment = ydoc.getXmlFragment('prosemirror');
   const plugins = useMemo(() => [ySyncPlugin(fragment), yUndoPlugin()], [fragment]);
 

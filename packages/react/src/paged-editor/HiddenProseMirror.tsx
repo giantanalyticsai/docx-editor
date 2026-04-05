@@ -222,6 +222,14 @@ const HiddenProseMirrorComponent = forwardRef<HiddenProseMirrorRef, HiddenProseM
     // Keep document ref in sync
     documentRef.current = document;
 
+    // Generate a stable document identity from metadata.
+    // Used by both createView() and the document-change effect to track identity.
+    const getDocumentId = (doc: Document | null): string => {
+      if (!doc) return 'empty';
+      const meta = doc.package?.properties;
+      return `${meta?.created || ''}-${meta?.modified || ''}-${meta?.title || ''}`;
+    };
+
     // ========================================================================
     // EditorView Lifecycle
     // ========================================================================
@@ -274,10 +282,7 @@ const HiddenProseMirrorComponent = forwardRef<HiddenProseMirrorRef, HiddenProseM
       // Mark as initialized so the document-change effect skips the redundant
       // first-mount updateState (createView already set the initial state).
       isInitializedRef.current = true;
-      const meta = document?.package?.properties;
-      lastDocumentIdRef.current = document
-        ? `${meta?.created || ''}-${meta?.modified || ''}-${meta?.title || ''}`
-        : 'empty';
+      lastDocumentIdRef.current = getDocumentId(document);
 
       // Notify that view is ready (use ref to avoid dependency issues)
       onEditorViewReadyRef.current?.(viewRef.current);
@@ -317,17 +322,6 @@ const HiddenProseMirrorComponent = forwardRef<HiddenProseMirrorRef, HiddenProseM
     // being passed back through the parent component's state
     useEffect(() => {
       if (!viewRef.current || isDestroyingRef.current) return;
-
-      // Generate a simple document identity based on its structure
-      // This helps detect truly different documents vs the same doc passed back after editing
-      const getDocumentId = (doc: Document | null): string => {
-        if (!doc) return 'empty';
-        // Use the document's package id or a hash of its structure
-        // For simplicity, we compare based on whether it's a different document object
-        // and whether it has different metadata
-        const meta = doc.package?.properties;
-        return `${meta?.created || ''}-${meta?.modified || ''}-${meta?.title || ''}`;
-      };
 
       const currentDocId = getDocumentId(document);
 
