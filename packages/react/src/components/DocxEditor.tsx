@@ -28,6 +28,7 @@ import type {
   SectionProperties,
   ColorValue,
 } from '@giantanalyticsai/docx-core/types/document';
+import defaultLocale from '../../i18n/en.json';
 
 import { Toolbar, ToolbarButton, ToolbarGroup } from './Toolbar';
 import type { SelectionFormatting, FormattingAction } from './toolbarTypes';
@@ -63,6 +64,8 @@ import {
   type PageNavigatorPosition,
   type PageNavigatorVariant,
 } from './ui/PageNavigator';
+import { LocaleProvider } from '../i18n';
+import type { Translations } from '../i18n';
 import { HorizontalRuler } from './ui/HorizontalRuler';
 import { EditingModeDropdown, type EditorMode } from './ui/EditingModeDropdown';
 import { VerticalRuler } from './ui/VerticalRuler';
@@ -91,6 +94,7 @@ const HyperlinkDialog = lazy(() => import('./dialogs/HyperlinkDialog'));
 const TablePropertiesDialog = lazy(() =>
   import('./dialogs/TablePropertiesDialog').then((m) => ({ default: m.TablePropertiesDialog }))
 );
+const SplitCellDialog = lazy(() => import('./dialogs/SplitCellDialog'));
 const ImagePositionDialog = lazy(() =>
   import('./dialogs/ImagePositionDialog').then((m) => ({ default: m.ImagePositionDialog }))
 );
@@ -129,6 +133,7 @@ import { executeCommand } from '@giantanalyticsai/docx-core/agent/executor';
 import { useTableSelection } from '../hooks/useTableSelection';
 import { useDocumentHistory } from '../hooks/useHistory';
 import { clampZoom } from '../hooks/useWheelZoom';
+import { getSplitCellDialogConfig, splitActiveTableCell } from './tableSplit';
 
 // Extension system
 import { createStarterKit } from '@giantanalyticsai/docx-core/prosemirror/extensions/StarterKit';
@@ -190,7 +195,6 @@ import {
   // Table of Contents command
   generateTOC,
   // Table commands
-  isInTable,
   getTableContext,
   insertTable,
   addRowAbove,
@@ -204,7 +208,6 @@ import {
   selectRow as pmSelectRow,
   selectColumn as pmSelectColumn,
   mergeCells as pmMergeCells,
-  splitCell as pmSplitCell,
   setCellBorder,
   setCellVerticalAlign,
   setCellMargins,
@@ -274,6 +277,19 @@ export interface DocxEditorProps {
   onFontsLoaded?: () => void;
   /** External ProseMirror plugins (from PluginHost) */
   externalPlugins?: import('prosemirror-state').Plugin[];
+  /**
+   * When true, external ProseMirror plugins (passed via `externalPlugins`)
+   * manage the document content lifecycle. The editor will not call
+   * `loadDocument()` or `loadDocumentBuffer()` on mount, preventing
+   * the internal useEffect from resetting ProseMirror state.
+   *
+   * Use this with collaboration plugins like `ySyncPlugin` from `y-prosemirror`
+   * that populate ProseMirror content from an external source (e.g., Y.Doc).
+   *
+   * You must still pass a `document` prop (e.g., `createEmptyDocument()`) to
+   * initialize the ProseMirror schema and editor shell.
+   */
+  collaborative?: boolean;
   /** Callback when editor view is ready (for PluginHost) */
   onEditorViewReady?: (view: import('prosemirror-view').EditorView) => void;
   /** Theme for styling */
@@ -378,6 +394,8 @@ export interface DocxEditorProps {
   documentNameEditable?: boolean;
   /** Custom right-side actions for the title bar */
   renderTitleBarRight?: () => ReactNode;
+  /** Translation overrides. Import a locale JSON file and pass it directly. */
+  i18n?: Translations;
 }
 
 /**
@@ -582,18 +600,34 @@ function injectTCReplyRangeMarkers(content: BlockContent[], comments: Comment[])
         if (!hasTC) continue;
 
         const newItems: ParagraphContent[] = [];
-        for (const item of block.content) {
+        const items = block.content;
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
           if (
             (item.type === 'insertion' || item.type === 'deletion') &&
             replyIdsByRevision.has(item.info.id)
           ) {
             const replyIds = replyIdsByRevision.get(item.info.id)!;
-            // Add commentRangeStart for each reply BEFORE the TC content
+            // Add commentRangeStart BEFORE the TC content
             for (const rid of replyIds) {
               newItems.push({ type: 'commentRangeStart', id: rid });
             }
             newItems.push(item);
-            // Add commentRangeEnd for each reply AFTER the TC content
+            // Check if the next item is the other half of a replacement pair
+            // (adjacent del+ins with same author+date). If so, include it inside
+            // the comment range so we don't break del-ins adjacency.
+            const next = items[i + 1];
+            if (
+              next &&
+              (next.type === 'insertion' || next.type === 'deletion') &&
+              next.type !== item.type &&
+              next.info.author === item.info.author &&
+              next.info.date === item.info.date
+            ) {
+              newItems.push(next);
+              i++; // skip the paired item
+            }
+            // Add commentRangeEnd AFTER both TC items
             for (const rid of replyIds) {
               newItems.push({ type: 'commentRangeEnd', id: rid });
             }
@@ -792,6 +826,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     onCommentReply,
     mentionProvider,
     externalPlugins,
+    collaborative = false,
     onEditorViewReady,
     onRenderedDomContextReady,
     pluginOverlays,
@@ -802,12 +837,13 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     onDocumentNameChange,
     documentNameEditable = true,
     renderTitleBarRight,
+    i18n,
   },
   ref
 ) {
   // State
   const [state, setState] = useState<EditorState>({
-    isLoading: !!documentBuffer,
+    isLoading: !!documentBuffer && !collaborative,
     parseError: null,
     zoom: initialZoom,
     canUndo: false,
@@ -833,6 +869,14 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
 
   // Table properties dialog state
   const [tablePropsOpen, setTablePropsOpen] = useState(false);
+  const [splitCellDialogState, setSplitCellDialogState] = useState({
+    isOpen: false,
+    initialRows: 1,
+    initialCols: 2,
+    minRows: 1,
+    minCols: 1,
+    source: null as 'pm' | 'legacy' | null,
+  });
   // Image position dialog state
   const [imagePositionOpen, setImagePositionOpen] = useState(false);
   // Image properties dialog state
@@ -918,7 +962,14 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     position: { x: number; y: number };
     hasSelection: boolean;
     cursorInTable: boolean;
-  }>({ isOpen: false, position: { x: 0, y: 0 }, hasSelection: false, cursorInTable: false });
+    tableContext: TableContextInfo | null;
+  }>({
+    isOpen: false,
+    position: { x: 0, y: 0 },
+    hasSelection: false,
+    cursorInTable: false,
+    tableContext: null,
+  });
 
   // Debounce timers (avoid full doc walk on every keystroke)
   const extractTrackedChangesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -973,7 +1024,75 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         merged.push({ ...entry });
       }
     }
-    setTrackedChanges(merged);
+
+    // Detect replacement pairs: adjacent deletion + insertion from the same author/date
+    // Word assigns different w:id values but same author+date for a single replace operation
+    const final: TrackedChangeEntry[] = [];
+    for (let i = 0; i < merged.length; i++) {
+      const curr = merged[i];
+      const next = merged[i + 1];
+      if (
+        curr.type === 'deletion' &&
+        next &&
+        next.type === 'insertion' &&
+        curr.author === next.author &&
+        curr.date === next.date &&
+        curr.to === next.from
+      ) {
+        final.push({
+          type: 'replacement',
+          text: next.text,
+          deletedText: curr.text,
+          author: curr.author,
+          date: curr.date,
+          from: curr.from,
+          to: next.to,
+          revisionId: curr.revisionId,
+          insertionRevisionId: next.revisionId,
+        });
+        i++; // skip the insertion entry
+      } else {
+        final.push(curr);
+      }
+    }
+    setTrackedChanges(final);
+
+    // Detect comments whose range overlaps with tracked changes and thread them.
+    // When a comment mark covers the same text as a tracked change mark,
+    // the comment is a reply to the tracked change.
+    const commentType = schema.marks.comment;
+    if (commentType && final.length > 0) {
+      // Build a map: commentId → overlapping revisionId
+      const commentToRevision = new Map<number, number>();
+      doc.descendants((node) => {
+        if (!node.isText) return;
+        const commentMark = node.marks.find((m) => m.type === commentType);
+        const tcMark = node.marks.find((m) => m.type === insertionType || m.type === deletionType);
+        if (commentMark && tcMark) {
+          const cid = commentMark.attrs.commentId as number;
+          const rid = tcMark.attrs.revisionId as number;
+          if (!commentToRevision.has(cid)) {
+            commentToRevision.set(cid, rid);
+          }
+        }
+      });
+
+      if (commentToRevision.size > 0) {
+        setComments((prev) => {
+          let changed = false;
+          const updated = prev.map((c) => {
+            if (c.parentId != null) return c; // already threaded
+            const rid = commentToRevision.get(c.id);
+            if (rid != null) {
+              changed = true;
+              return { ...c, parentId: rid };
+            }
+            return c;
+          });
+          return changed ? updated : prev;
+        });
+      }
+    }
   }, []);
 
   // Remove comments whose marks no longer exist in the document
@@ -1102,6 +1221,15 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const toolbarWrapperRef = useRef<HTMLDivElement>(null);
   const toolbarRoRef = useRef<ResizeObserver | null>(null);
   const [toolbarHeight, setToolbarHeight] = useState(0);
+
+  // Scroll-based page indicator (Google Docs style)
+  const [scrollPageInfo, setScrollPageInfo] = useState<{
+    currentPage: number;
+    totalPages: number;
+    visible: boolean;
+  }>({ currentPage: 1, totalPages: 1, visible: false });
+  const scrollFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Keep history.state accessible in stable callbacks without stale closures
   const historyStateRef = useRef(history.state);
   historyStateRef.current = history.state;
@@ -1481,6 +1609,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
 
   // React to document/documentBuffer prop changes
   useEffect(() => {
+    // In collaborative mode, external plugins manage content — skip document loading.
+    if (collaborative) return;
+
     if (!documentBuffer) {
       if (initialDocument) {
         loadParsedDocument(initialDocument);
@@ -1489,7 +1620,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     }
 
     loadBuffer(documentBuffer);
-  }, [documentBuffer, initialDocument]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [documentBuffer, initialDocument, collaborative]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Create/update agent when document changes
   useEffect(() => {
@@ -2309,11 +2440,32 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     [history, pushDocument]
   );
 
+  const openSplitCellDialog = useCallback(() => {
+    const view = getActiveEditorView();
+    const pmConfig = view ? getSplitCellDialogConfig(view.state) : null;
+    const legacyConfig = pmConfig ? null : tableSelection.getSplitCellConfig();
+    const config = pmConfig ?? legacyConfig;
+    if (!config) return;
+
+    setSplitCellDialogState({
+      isOpen: true,
+      ...config,
+      source: pmConfig ? 'pm' : 'legacy',
+    });
+  }, [getActiveEditorView, tableSelection]);
+
   // Handle table action from Toolbar - use ProseMirror commands
   const handleTableAction = useCallback(
     (action: TableAction) => {
       const view = getActiveEditorView();
-      if (!view) return;
+      if (!view) {
+        if (action === 'splitCell') {
+          openSplitCellDialog();
+        } else if (typeof action !== 'object') {
+          tableSelection.handleAction(action);
+        }
+        return;
+      }
 
       switch (action) {
         case 'addRowAbove':
@@ -2350,7 +2502,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
           pmMergeCells(view.state, view.dispatch);
           break;
         case 'splitCell':
-          pmSplitCell(view.state, view.dispatch);
+          openSplitCellDialog();
           break;
         // Border actions — use current border spec from toolbar
         case 'borderAll':
@@ -2492,22 +2644,27 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
 
       focusActiveEditor();
     },
-    [tableSelection, getActiveEditorView, focusActiveEditor]
+    [tableSelection, getActiveEditorView, focusActiveEditor, openSplitCellDialog]
   );
 
   // Context menu handler
   const handleEditorContextMenu = useCallback((e: React.MouseEvent) => {
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('.paged-editor__pages')) {
+      return;
+    }
     e.preventDefault();
     e.stopPropagation();
     const view = pagedEditorRef.current?.getView();
-    const inTable = view ? isInTable(view.state) : false;
+    const tableContext = view ? getTableContext(view.state) : { isInTable: false };
     const { from, to } = view?.state.selection ?? { from: 0, to: 0 };
     const hasSel = from !== to;
     setContextMenu({
       isOpen: true,
       position: { x: e.clientX, y: e.clientY },
       hasSelection: hasSel,
-      cursorInTable: inTable,
+      cursorInTable: tableContext.isInTable,
+      tableContext: tableContext.isInTable ? tableContext : null,
     });
   }, []);
 
@@ -2723,7 +2880,27 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         }
       }
     },
-    [getActiveEditorView]
+    [getActiveEditorView, openSplitCellDialog]
+  );
+
+  const handleSplitCellDialogClose = useCallback(() => {
+    setSplitCellDialogState((prev) => ({ ...prev, isOpen: false, source: null }));
+  }, []);
+
+  const handleSplitCellDialogApply = useCallback(
+    (rows: number, cols: number) => {
+      if (splitCellDialogState.source === 'legacy') {
+        tableSelection.applySplitCell(rows, cols);
+        focusActiveEditor();
+        return;
+      }
+
+      const view = getActiveEditorView();
+      if (!view) return;
+      splitActiveTableCell(view.state, view.dispatch, rows, cols);
+      focusActiveEditor();
+    },
+    [focusActiveEditor, getActiveEditorView, splitCellDialogState.source, tableSelection]
   );
 
   // Handle zoom change
@@ -2993,12 +3170,13 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   // Right-click context menu handlers
   const handleContextMenu = useCallback((data: { x: number; y: number; hasSelection: boolean }) => {
     const view = pagedEditorRef.current?.getView();
-    const inTable = view ? isInTable(view.state) : false;
+    const tableContext = view ? getTableContext(view.state) : { isInTable: false };
     setContextMenu({
       isOpen: true,
       position: data,
       hasSelection: data.hasSelection,
-      cursorInTable: inTable,
+      cursorInTable: tableContext.isInTable,
+      tableContext: tableContext.isInTable ? tableContext : null,
     });
   }, []);
 
@@ -3008,6 +3186,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       position: { x: 0, y: 0 },
       hasSelection: false,
       cursorInTable: false,
+      tableContext: null,
     });
   }, []);
 
@@ -3045,12 +3224,23 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         { action: 'deleteRow', label: 'Delete row', dividerAfter: true },
         { action: 'addColumnLeft', label: 'Insert column left' },
         { action: 'addColumnRight', label: 'Insert column right' },
-        { action: 'deleteColumn', label: 'Delete column', dividerAfter: true }
+        { action: 'deleteColumn', label: 'Delete column' },
+        {
+          action: 'mergeCells',
+          label: i18n?.table?.mergeCells ?? defaultLocale.table.mergeCells,
+          disabled: !contextMenu.tableContext?.hasMultiCellSelection,
+        },
+        {
+          action: 'splitCell',
+          label: i18n?.table?.splitCell ?? defaultLocale.table.splitCell,
+          disabled: !contextMenu.tableContext?.canSplitCell,
+          dividerAfter: true,
+        }
       );
     }
     items.push({ action: 'selectAll', label: 'Select All', shortcut: `${mod}+A` });
     return items;
-  }, [contextMenu.hasSelection, contextMenu.cursorInTable]);
+  }, [contextMenu.hasSelection, contextMenu.cursorInTable, contextMenu.tableContext]);
 
   const handleContextMenuAction = useCallback(
     async (action: TextContextAction) => {
@@ -3141,6 +3331,12 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         case 'deleteColumn':
           pmDeleteColumn(view.state, view.dispatch);
           break;
+        case 'mergeCells':
+          pmMergeCells(view.state, view.dispatch);
+          break;
+        case 'splitCell':
+          openSplitCellDialog();
+          break;
         // Comment — delegate to shared handler
         case 'addComment':
           handleStartAddComment();
@@ -3148,7 +3344,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       }
       // TextContextMenu calls onClose after onAction, so no need to close here
     },
-    [getActiveEditorView, focusActiveEditor, handleStartAddComment]
+    [getActiveEditorView, focusActiveEditor, handleStartAddComment, openSplitCellDialog]
   );
 
   // Handle margin changes from rulers
@@ -3273,6 +3469,56 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     [getActiveEditorView]
   );
 
+  // Scroll-based page tracking: calculate current page from scroll position.
+  // Re-attaches when the scroll container mounts (after loading completes).
+  const scrollContainerEl = scrollContainerRef.current;
+  useEffect(() => {
+    if (!scrollContainerEl) return;
+
+    const handleScroll = () => {
+      const layout = pagedEditorRef.current?.getLayout();
+      if (!layout || layout.pages.length === 0) return;
+
+      const scrollTop = scrollContainerEl.scrollTop;
+      const totalPages = layout.pages.length;
+      const pageGap = 24;
+      const paddingTop = 24;
+
+      const viewportCenter = scrollTop + scrollContainerEl.clientHeight / 2;
+      let accumulatedY = paddingTop;
+      let currentPage = 1;
+
+      for (let i = 0; i < layout.pages.length; i++) {
+        const pageHeight = layout.pages[i].size.h;
+        const pageEnd = accumulatedY + pageHeight;
+        if (viewportCenter < pageEnd) {
+          currentPage = i + 1;
+          break;
+        }
+        accumulatedY = pageEnd + pageGap;
+        currentPage = i + 2;
+      }
+      currentPage = Math.min(currentPage, totalPages);
+
+      setScrollPageInfo({ currentPage, totalPages, visible: true });
+
+      if (scrollFadeTimerRef.current) {
+        clearTimeout(scrollFadeTimerRef.current);
+      }
+      scrollFadeTimerRef.current = setTimeout(() => {
+        setScrollPageInfo((prev) => ({ ...prev, visible: false }));
+      }, 600);
+    };
+
+    scrollContainerEl.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      scrollContainerEl.removeEventListener('scroll', handleScroll);
+      if (scrollFadeTimerRef.current) {
+        clearTimeout(scrollFadeTimerRef.current);
+      }
+    };
+  }, [scrollContainerEl]);
+
   // Handle page navigation (from PageNavigator)
   // TODO: Implement page navigation in ProseMirror
   const handlePageNavigate = useCallback((_pageNumber: number) => {
@@ -3312,11 +3558,11 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
 
         if (useSelective && view) {
           const editorState = view.state;
-          // Force full repack if we injected reply range markers (selective save uses original XML)
-          const commentIdSet = new Set(comments.map((c) => c.id));
-          const hasInjectedReplies = comments.some(
-            (c) => c.parentId != null && commentIdSet.has(c.parentId)
-          );
+          // Force full repack if any reply comments exist (both comment replies and
+          // tracked-change replies need range markers injected into document.xml,
+          // which selective save can't handle since the affected paragraphs may not
+          // be in changedParaIds)
+          const hasInjectedReplies = comments.some((c) => c.parentId != null);
           selectiveOptions = {
             selective: {
               changedParaIds: getChangedParagraphIds(editorState),
@@ -4095,6 +4341,18 @@ body { background: white; }
     return items;
   }, [showCommentsSidebar, commentSidebarItems, pluginSidebarItems]);
 
+  // Build a map from insertion revisionIds to sidebar item IDs for replacement tracked changes.
+  // This allows clicking the insertion part of a replacement to activate the same sidebar card.
+  const revisionIdAliases = useMemo(() => {
+    const map = new Map<string, string>();
+    trackedChanges.forEach((change, idx) => {
+      if (change.type === 'replacement' && change.insertionRevisionId != null) {
+        map.set(String(change.insertionRevisionId), `tc-${change.revisionId}-${idx}`);
+      }
+    });
+    return map;
+  }, [trackedChanges]);
+
   const sidebarOpen = allSidebarItems.length > 0;
 
   const resolvedCommentIds = useMemo(() => {
@@ -4261,653 +4519,744 @@ body { background: white; }
   );
 
   return (
-    <ErrorProvider>
-      <ErrorBoundary onError={handleEditorError}>
-        <ColorHistoryProvider value={colorHistoryValue}>
-          <div
-            ref={containerRef}
-            className={`ep-root docx-editor ${showMarksEnabled ? 'docx-show-marks' : ''} ${layoutMode === 'web' ? 'docx-layout-web' : ''} ${className}`}
-            style={containerStyle}
-            data-testid="docx-editor"
-            data-comments-open={showCommentsSidebar ? 'true' : 'false'}
-          >
-            {/* Main content area */}
-            <div style={mainContentStyle}>
-              {/* Wrapper for scroll container + outline overlay */}
-              <div
-                style={{
-                  position: 'relative',
-                  flex: 1,
-                  minHeight: 0,
-                  minWidth: 0,
-                  display: 'flex',
-                  flexDirection: 'column',
-                }}
-              >
-                {/* Ribbon/toolbar header - fixed above scroll container */}
-                {shouldShowToolbar && (
-                  <div
-                    ref={toolbarRefCallback}
-                    className="sticky top-0 z-50 flex flex-col gap-0 bg-white shadow-sm"
-                  >
-                    {isRibbon ? (
-                      <RibbonToolbar
-                        currentFormatting={state.selectionFormatting}
-                        onFormat={handleFormat}
-                        onUndo={undoActiveEditor}
-                        onRedo={redoActiveEditor}
-                        onFind={handleOpenFind}
-                        onReplace={handleOpenReplace}
-                        onInsertTable={handleInsertTable}
-                        onInsertImage={handleInsertImageClick}
-                        onInsertPageBreak={handleInsertPageBreak}
-                        onInsertSectionBreak={handleInsertSectionBreak}
-                        onInsertTOC={handleInsertTOC}
-                        onUpdateTOC={handleUpdateTOC}
-                        onInsertFootnote={handleInsertFootnote}
-                        onInsertEndnote={handleInsertEndnote}
-                        onPageSetup={handleOpenPageSetup}
-                        onApplyPageSetup={handlePageSetupApply}
-                        sectionProperties={history.state?.package.document?.finalSectionProperties}
-                        onCopy={handleCopy}
-                        onCut={handleCut}
-                        onPaste={handlePaste}
-                        onToggleLocalClipboard={handleToggleLocalClipboard}
-                        localClipboardEnabled={localClipboardEnabled}
-                        onToggleShowMarks={handleToggleShowMarks}
-                        showMarksEnabled={showMarksEnabled}
-                        onToggleParagraphBorder={handleToggleParagraphBorder}
-                        rulerEnabled={effectiveShowRuler}
-                        onToggleRuler={handleToggleRuler}
-                        onZoomPageWidth={handleZoomPageWidth}
-                        onZoomOnePage={handleZoomOnePage}
-                        layoutMode={layoutMode}
-                        onSetLayoutMode={handleSetLayoutMode}
-                        onToggleCommentsSidebar={handleToggleCommentsSidebar}
-                        editingMode={editingMode}
-                        onSetEditingMode={setEditingMode}
-                        onAcceptAllChanges={handleAcceptAllChanges}
-                        onRejectAllChanges={handleRejectAllChanges}
-                        onNewComment={handleNewComment}
-                        onDeleteComment={handleDeleteComment}
-                        onSetIndentLeft={handleIndentLeftChange}
-                        onSetIndentRight={handleIndentRightChange}
-                        onSetSpaceBefore={handleSpaceBeforeChange}
-                        onSetSpaceAfter={handleSpaceAfterChange}
-                        zoom={state.zoom}
-                        onZoomChange={handleZoomChange}
-                        onToggleOutline={handleToggleOutline}
-                        tableContext={state.pmTableContext}
-                        onTableAction={handleTableAction}
-                        imageContext={state.pmImageContext}
-                        onOpenHeaderFooter={handleHeaderFooterDoubleClick}
-                        onCloseHeaderFooter={handleBodyClick}
-                        hfEditPosition={hfEditPosition}
-                        onOpenImageProperties={handleOpenImageProperties}
-                        onOpenImageSize={state.pmImageContext ? handleOpenImageSize : undefined}
-                        onRefocusEditor={focusActiveEditor}
-                        documentStyles={history.state?.package.styles?.styles}
-                        theme={history.state?.package.theme || theme}
-                        readOnly={readOnlyProp}
-                      />
-                    ) : (
-                      <>
-                        {useEditorToolbar ? (
-                          <EditorToolbar
-                            currentFormatting={state.selectionFormatting}
-                            onFormat={handleFormat}
-                            onUndo={undoActiveEditor}
-                            onRedo={redoActiveEditor}
-                            canUndo={state.canUndo}
-                            canRedo={state.canRedo}
-                            disabled={readOnly}
-                            documentStyles={history.state?.package.styles?.styles}
-                            theme={history.state?.package.theme || theme}
-                            showPrintButton={showPrintButton}
-                            onPrint={handleDirectPrint}
-                            showZoomControl={showZoomControl}
-                            zoom={state.zoom}
-                            onZoomChange={handleZoomChange}
-                            onRefocusEditor={focusActiveEditor}
-                            onInsertTable={handleInsertTable}
-                            showTableInsert={true}
-                            onInsertImage={handleInsertImageClick}
-                            onInsertPageBreak={handleInsertPageBreak}
-                            onInsertTOC={handleInsertTOC}
-                            imageContext={state.pmImageContext}
-                            onImageWrapType={handleImageWrapType}
-                            onImageTransform={handleImageTransform}
-                            onOpenImageProperties={handleOpenImageProperties}
-                            onPageSetup={handleOpenPageSetup}
-                            tableContext={state.pmTableContext}
-                            onTableAction={handleTableAction}
-                          >
-                            <EditorToolbar.TitleBar>
-                              {renderLogo && (
-                                <EditorToolbar.Logo>{renderLogo()}</EditorToolbar.Logo>
-                              )}
-                              {documentName !== undefined && (
-                                <EditorToolbar.DocumentName
-                                  value={documentName}
-                                  onChange={onDocumentNameChange}
-                                  editable={documentNameEditable}
-                                />
-                              )}
-                              {renderTitleBarRight && (
-                                <EditorToolbar.TitleBarRight>
-                                  {renderTitleBarRight()}
-                                </EditorToolbar.TitleBarRight>
-                              )}
-                              <EditorToolbar.MenuBar />
-                            </EditorToolbar.TitleBar>
-                            <EditorToolbar.FormattingBar>
-                              {toolbarChildren}
-                            </EditorToolbar.FormattingBar>
-                          </EditorToolbar>
-                        ) : (
-                          <Toolbar
-                            currentFormatting={state.selectionFormatting}
-                            onFormat={handleFormat}
-                            onUndo={undoActiveEditor}
-                            onRedo={redoActiveEditor}
-                            canUndo={state.canUndo}
-                            canRedo={state.canRedo}
-                            disabled={readOnly}
-                            documentStyles={history.state?.package.styles?.styles}
-                            theme={history.state?.package.theme || theme}
-                            showPrintButton={showPrintButton}
-                            onPrint={handleDirectPrint}
-                            showZoomControl={showZoomControl}
-                            zoom={state.zoom}
-                            onZoomChange={handleZoomChange}
-                            onRefocusEditor={focusActiveEditor}
-                            onInsertTable={handleInsertTable}
-                            showTableInsert={true}
-                            onInsertImage={handleInsertImageClick}
-                            onInsertPageBreak={handleInsertPageBreak}
-                            onInsertTOC={handleInsertTOC}
-                            imageContext={state.pmImageContext}
-                            onImageWrapType={handleImageWrapType}
-                            onImageTransform={handleImageTransform}
-                            onOpenImageProperties={handleOpenImageProperties}
-                            onPageSetup={handleOpenPageSetup}
-                            tableContext={state.pmTableContext}
-                            onTableAction={handleTableAction}
-                          >
-                            {toolbarChildren}
-                          </Toolbar>
-                        )}
-                      </>
-                    )}
-
-                    {/* Horizontal Ruler - fixed with ribbon header */}
-                    {effectiveShowRuler && (
-                      <div
-                        className="flex justify-center px-5 py-1 overflow-x-auto flex-shrink-0 bg-doc-bg"
-                        style={{
-                          paddingRight: sidebarOpen
-                            ? `calc(20px + ${SIDEBAR_DOCUMENT_SHIFT * 2}px)`
-                            : undefined,
-                          transition: 'padding 0.2s ease',
-                        }}
-                      >
-                        <HorizontalRuler
-                          sectionProps={history.state?.package.document?.finalSectionProperties}
-                          zoom={state.zoom}
-                          unit={rulerUnit}
-                          editable={!readOnly}
-                          onLeftMarginChange={handleLeftMarginChange}
-                          onRightMarginChange={handleRightMarginChange}
-                          indentLeft={state.paragraphIndentLeft}
-                          indentRight={state.paragraphIndentRight}
-                          onIndentLeftChange={handleIndentLeftChange}
-                          onIndentRightChange={handleIndentRightChange}
-                          showFirstLineIndent={true}
-                          firstLineIndent={state.paragraphFirstLineIndent}
-                          hangingIndent={state.paragraphHangingIndent}
-                          onFirstLineIndentChange={handleFirstLineIndentChange}
-                          tabStops={state.paragraphTabs}
-                          onTabStopRemove={handleTabStopRemove}
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Editor container - this is the scroll container */}
+    <LocaleProvider i18n={i18n}>
+      <ErrorProvider>
+        <ErrorBoundary onError={handleEditorError}>
+          <ColorHistoryProvider value={colorHistoryValue}>
+            <div
+              ref={containerRef}
+              className={`ep-root docx-editor ${showMarksEnabled ? 'docx-show-marks' : ''} ${layoutMode === 'web' ? 'docx-layout-web' : ''} ${className}`}
+              style={containerStyle}
+              data-testid="docx-editor"
+              data-comments-open={showCommentsSidebar ? 'true' : 'false'}
+            >
+              {/* Main content area */}
+              <div style={mainContentStyle}>
+                {/* Wrapper for toolbar + scroll container + outline overlay */}
                 <div
-                  style={editorContainerStyle}
-                  ref={scrollContainerRef}
-                  data-testid="editor-scroll"
+                  style={{
+                    position: 'relative',
+                    flex: 1,
+                    minHeight: 0,
+                    minWidth: 0,
+                    display: 'flex',
+                    flexDirection: 'column',
+                  }}
                 >
-                  {/* Editor content wrapper */}
-                  <div style={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative' }}>
-                    {/* Editor content area */}
+                  {/* Ribbon/toolbar header - fixed above scroll container */}
+                  {shouldShowToolbar && (
                     <div
-                      ref={editorContentRef}
-                      style={{ position: 'relative', flex: 1, minWidth: 0 }}
-                      onMouseDown={(e) => {
-                        // Focus editor when clicking on the background area (not the editor itself)
-                        // Using mouseDown for immediate response before focus can be lost
-                        if (e.target === e.currentTarget) {
-                          e.preventDefault();
-                          pagedEditorRef.current?.focus();
-                        }
-                      }}
-                      onContextMenu={handleEditorContextMenu}
+                      ref={toolbarRefCallback}
+                      className="sticky top-0 z-50 flex flex-col gap-0 bg-white shadow-sm"
                     >
-                      {/* Vertical Ruler - fixed on left edge (hidden when readOnly prop is set) */}
-                      {effectiveShowRuler && !readOnlyProp && (
+                      {isRibbon ? (
+                        <RibbonToolbar
+                          currentFormatting={state.selectionFormatting}
+                          onFormat={handleFormat}
+                          onUndo={undoActiveEditor}
+                          onRedo={redoActiveEditor}
+                          onFind={handleOpenFind}
+                          onReplace={handleOpenReplace}
+                          onInsertTable={handleInsertTable}
+                          onInsertImage={handleInsertImageClick}
+                          onInsertPageBreak={handleInsertPageBreak}
+                          onInsertSectionBreak={handleInsertSectionBreak}
+                          onInsertTOC={handleInsertTOC}
+                          onUpdateTOC={handleUpdateTOC}
+                          onInsertFootnote={handleInsertFootnote}
+                          onInsertEndnote={handleInsertEndnote}
+                          onPageSetup={handleOpenPageSetup}
+                          onApplyPageSetup={handlePageSetupApply}
+                          sectionProperties={
+                            history.state?.package.document?.finalSectionProperties
+                          }
+                          onCopy={handleCopy}
+                          onCut={handleCut}
+                          onPaste={handlePaste}
+                          onToggleLocalClipboard={handleToggleLocalClipboard}
+                          localClipboardEnabled={localClipboardEnabled}
+                          onToggleShowMarks={handleToggleShowMarks}
+                          showMarksEnabled={showMarksEnabled}
+                          onToggleParagraphBorder={handleToggleParagraphBorder}
+                          rulerEnabled={effectiveShowRuler}
+                          onToggleRuler={handleToggleRuler}
+                          onZoomPageWidth={handleZoomPageWidth}
+                          onZoomOnePage={handleZoomOnePage}
+                          layoutMode={layoutMode}
+                          onSetLayoutMode={handleSetLayoutMode}
+                          onToggleCommentsSidebar={handleToggleCommentsSidebar}
+                          editingMode={editingMode}
+                          onSetEditingMode={setEditingMode}
+                          onAcceptAllChanges={handleAcceptAllChanges}
+                          onRejectAllChanges={handleRejectAllChanges}
+                          onNewComment={handleNewComment}
+                          onDeleteComment={handleDeleteComment}
+                          onSetIndentLeft={handleIndentLeftChange}
+                          onSetIndentRight={handleIndentRightChange}
+                          onSetSpaceBefore={handleSpaceBeforeChange}
+                          onSetSpaceAfter={handleSpaceAfterChange}
+                          zoom={state.zoom}
+                          onZoomChange={handleZoomChange}
+                          onToggleOutline={handleToggleOutline}
+                          tableContext={state.pmTableContext}
+                          onTableAction={handleTableAction}
+                          imageContext={state.pmImageContext}
+                          onOpenHeaderFooter={handleHeaderFooterDoubleClick}
+                          onCloseHeaderFooter={handleBodyClick}
+                          hfEditPosition={hfEditPosition}
+                          onOpenImageProperties={handleOpenImageProperties}
+                          onOpenImageSize={state.pmImageContext ? handleOpenImageSize : undefined}
+                          onRefocusEditor={focusActiveEditor}
+                          documentStyles={history.state?.package.styles?.styles}
+                          theme={history.state?.package.theme || theme}
+                          readOnly={readOnlyProp}
+                        />
+                      ) : (
+                        <>
+                          {useEditorToolbar ? (
+                            <EditorToolbar
+                              currentFormatting={state.selectionFormatting}
+                              onFormat={handleFormat}
+                              onUndo={undoActiveEditor}
+                              onRedo={redoActiveEditor}
+                              canUndo={state.canUndo}
+                              canRedo={state.canRedo}
+                              disabled={readOnly}
+                              documentStyles={history.state?.package.styles?.styles}
+                              theme={history.state?.package.theme || theme}
+                              showPrintButton={showPrintButton}
+                              onPrint={handleDirectPrint}
+                              showZoomControl={showZoomControl}
+                              zoom={state.zoom}
+                              onZoomChange={handleZoomChange}
+                              onRefocusEditor={focusActiveEditor}
+                              onInsertTable={handleInsertTable}
+                              showTableInsert={true}
+                              onInsertImage={handleInsertImageClick}
+                              onInsertPageBreak={handleInsertPageBreak}
+                              onInsertTOC={handleInsertTOC}
+                              imageContext={state.pmImageContext}
+                              onImageWrapType={handleImageWrapType}
+                              onImageTransform={handleImageTransform}
+                              onOpenImageProperties={handleOpenImageProperties}
+                              onPageSetup={handleOpenPageSetup}
+                              tableContext={state.pmTableContext}
+                              onTableAction={handleTableAction}
+                            >
+                              <EditorToolbar.TitleBar>
+                                {renderLogo && (
+                                  <EditorToolbar.Logo>{renderLogo()}</EditorToolbar.Logo>
+                                )}
+                                {documentName !== undefined && (
+                                  <EditorToolbar.DocumentName
+                                    value={documentName}
+                                    onChange={onDocumentNameChange}
+                                    editable={documentNameEditable}
+                                  />
+                                )}
+                                {renderTitleBarRight && (
+                                  <EditorToolbar.TitleBarRight>
+                                    {renderTitleBarRight()}
+                                  </EditorToolbar.TitleBarRight>
+                                )}
+                                <EditorToolbar.MenuBar />
+                              </EditorToolbar.TitleBar>
+                              <EditorToolbar.FormattingBar>
+                                {toolbarChildren}
+                              </EditorToolbar.FormattingBar>
+                            </EditorToolbar>
+                          ) : (
+                            <Toolbar
+                              currentFormatting={state.selectionFormatting}
+                              onFormat={handleFormat}
+                              onUndo={undoActiveEditor}
+                              onRedo={redoActiveEditor}
+                              canUndo={state.canUndo}
+                              canRedo={state.canRedo}
+                              disabled={readOnly}
+                              documentStyles={history.state?.package.styles?.styles}
+                              theme={history.state?.package.theme || theme}
+                              showPrintButton={showPrintButton}
+                              onPrint={handleDirectPrint}
+                              showZoomControl={showZoomControl}
+                              zoom={state.zoom}
+                              onZoomChange={handleZoomChange}
+                              onRefocusEditor={focusActiveEditor}
+                              onInsertTable={handleInsertTable}
+                              showTableInsert={true}
+                              onInsertImage={handleInsertImageClick}
+                              onInsertPageBreak={handleInsertPageBreak}
+                              onInsertTOC={handleInsertTOC}
+                              imageContext={state.pmImageContext}
+                              onImageWrapType={handleImageWrapType}
+                              onImageTransform={handleImageTransform}
+                              onOpenImageProperties={handleOpenImageProperties}
+                              onPageSetup={handleOpenPageSetup}
+                              tableContext={state.pmTableContext}
+                              onTableAction={handleTableAction}
+                            >
+                              {toolbarChildren}
+                            </Toolbar>
+                          )}
+                        </>
+                      )}
+
+                      {/* Horizontal Ruler - fixed with ribbon header */}
+                      {effectiveShowRuler && (
                         <div
+                          className="flex justify-center px-5 py-1 overflow-x-auto flex-shrink-0 bg-doc-bg"
                           style={{
-                            position: 'absolute',
-                            left: 0,
-                            top: 0,
-                            zIndex: 10,
-                            paddingTop: 48, // paged-editor__pages and layout padding-top
+                            paddingRight: sidebarOpen
+                              ? `calc(20px + ${SIDEBAR_DOCUMENT_SHIFT * 2}px)`
+                              : undefined,
+                            transition: 'padding 0.2s ease',
                           }}
                         >
-                          <VerticalRuler
+                          <HorizontalRuler
                             sectionProps={history.state?.package.document?.finalSectionProperties}
                             zoom={state.zoom}
                             unit={rulerUnit}
                             editable={!readOnly}
-                            onTopMarginChange={handleTopMarginChange}
-                            onBottomMarginChange={handleBottomMarginChange}
+                            onLeftMarginChange={handleLeftMarginChange}
+                            onRightMarginChange={handleRightMarginChange}
+                            indentLeft={state.paragraphIndentLeft}
+                            indentRight={state.paragraphIndentRight}
+                            onIndentLeftChange={handleIndentLeftChange}
+                            onIndentRightChange={handleIndentRightChange}
+                            showFirstLineIndent={true}
+                            firstLineIndent={state.paragraphFirstLineIndent}
+                            hangingIndent={state.paragraphHangingIndent}
+                            onFirstLineIndentChange={handleFirstLineIndentChange}
+                            tabStops={state.paragraphTabs}
+                            onTabStopRemove={handleTabStopRemove}
                           />
                         </div>
                       )}
-                      {/* Brighten highlight for the focused/expanded sidebar item */}
-                      {expandedSidebarItem && expandedSidebarItem.startsWith('comment-') && (
-                        <style>{`.paged-editor__pages [data-comment-id="${expandedSidebarItem.replace('comment-', '')}"] { background-color: rgba(255, 212, 0, 0.35) !important; border-bottom: 2px solid rgba(255, 212, 0, 0.7) !important; }`}</style>
-                      )}
-                      {expandedSidebarItem?.startsWith('tc-') && (
-                        <style>{`
-                          .paged-editor__pages .docx-insertion[data-revision-id="${expandedSidebarItem.split('-')[1]}"] { background-color: rgba(52, 168, 83, 0.2) !important; border-bottom: 2px solid #2e7d32 !important; }
-                          .paged-editor__pages .docx-deletion[data-revision-id="${expandedSidebarItem.split('-')[1]}"] { background-color: rgba(211, 47, 47, 0.2) !important; text-decoration-thickness: 2px !important; }
-                        `}</style>
-                      )}
-                      <PagedEditor
-                        ref={pagedEditorRef}
-                        document={history.state}
-                        styles={history.state?.package.styles}
-                        theme={history.state?.package.theme || theme}
-                        sectionProperties={history.state?.package.document?.finalSectionProperties}
-                        headerContent={headerContent}
-                        footerContent={footerContent}
-                        firstPageHeaderContent={firstPageHeaderContent}
-                        firstPageFooterContent={firstPageFooterContent}
-                        onHeaderFooterDoubleClick={handleHeaderFooterDoubleClick}
-                        hfEditMode={hfEditPosition}
-                        onBodyClick={handleBodyClick}
-                        zoom={state.zoom}
-                        readOnly={readOnly}
-                        extensionManager={extensionManager}
-                        onDocumentChange={handleDocumentChange}
-                        onSelectionChange={(_from, _to) => {
-                          // Extract full selection state from PM and use the standard handler
-                          const view = pagedEditorRef.current?.getView();
-                          if (view) {
-                            const selectionState = extractSelectionState(view.state);
-                            handleSelectionChange(selectionState);
-                          } else {
-                            handleSelectionChange(null);
+                    </div>
+                  )}
+
+                  {/* Editor container - this is the scroll container */}
+                  <div
+                    style={editorContainerStyle}
+                    ref={scrollContainerRef}
+                    data-testid="editor-scroll"
+                  >
+                    {/* Editor content wrapper */}
+                    <div style={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative' }}>
+                      {/* Editor content area */}
+                      <div
+                        ref={editorContentRef}
+                        style={{ position: 'relative', flex: 1, minWidth: 0 }}
+                        onMouseDown={(e) => {
+                          // Focus editor when clicking on the background area (not the editor itself)
+                          // Using mouseDown for immediate response before focus can be lost
+                          if (e.target === e.currentTarget) {
+                            e.preventDefault();
+                            pagedEditorRef.current?.focus();
                           }
                         }}
-                        externalPlugins={allExternalPlugins}
-                        onReady={(ref) => {
-                          onEditorViewReady?.(ref.getView()!);
-                        }}
-                        onRenderedDomContextReady={onRenderedDomContextReady}
-                        pluginOverlays={pluginOverlays}
-                        onHyperlinkClick={handleHyperlinkClick}
-                        onContextMenu={handleContextMenu}
-                        commentsSidebarOpen={sidebarOpen}
-                        onAnchorPositionsChange={setAnchorPositions}
-                        resolvedCommentIds={resolvedIdsForRender}
-                        scrollContainerRef={scrollContainerRef}
-                        sidebarOverlay={
-                          <>
-                            {allSidebarItems.length > 0 && (
-                              <UnifiedSidebar
-                                items={allSidebarItems}
+                        onContextMenu={handleEditorContextMenu}
+                      >
+                        {/* Vertical Ruler - fixed on left edge (hidden when readOnly prop is set) */}
+                        {effectiveShowRuler && !readOnlyProp && (
+                          <div
+                            style={{
+                              position: 'absolute',
+                              left: 0,
+                              top: 0,
+                              zIndex: 10,
+                              paddingTop: 48, // paged-editor__pages and layout padding-top
+                            }}
+                          >
+                            <VerticalRuler
+                              sectionProps={history.state?.package.document?.finalSectionProperties}
+                              zoom={state.zoom}
+                              unit={rulerUnit}
+                              editable={!readOnly}
+                              onTopMarginChange={handleTopMarginChange}
+                              onBottomMarginChange={handleBottomMarginChange}
+                            />
+                          </div>
+                        )}
+                        {/* Brighten highlight for the focused/expanded sidebar item */}
+                        {expandedSidebarItem && expandedSidebarItem.startsWith('comment-') && (
+                          <style>{`.paged-editor__pages [data-comment-id="${expandedSidebarItem.replace('comment-', '')}"] { background-color: rgba(255, 212, 0, 0.35) !important; border-bottom: 2px solid rgba(255, 212, 0, 0.7) !important; }`}</style>
+                        )}
+                        {expandedSidebarItem?.startsWith('tc-') &&
+                          (() => {
+                            const revId = expandedSidebarItem.split('-')[1];
+                            const tc = trackedChanges.find((c) => String(c.revisionId) === revId);
+                            const insRevId = tc?.insertionRevisionId;
+                            return (
+                              <style>{`
+                            .paged-editor__pages .docx-insertion[data-revision-id="${insRevId ?? revId}"] { background-color: rgba(52, 168, 83, 0.2) !important; border-bottom: 2px solid #2e7d32 !important; }
+                            .paged-editor__pages .docx-deletion[data-revision-id="${revId}"] { background-color: rgba(211, 47, 47, 0.2) !important; text-decoration-thickness: 2px !important; }
+                          `}</style>
+                            );
+                          })()}
+                        <PagedEditor
+                          ref={pagedEditorRef}
+                          document={history.state}
+                          styles={history.state?.package.styles}
+                          theme={history.state?.package.theme || theme}
+                          sectionProperties={
+                            history.state?.package.document?.finalSectionProperties
+                          }
+                          headerContent={headerContent}
+                          footerContent={footerContent}
+                          firstPageHeaderContent={firstPageHeaderContent}
+                          firstPageFooterContent={firstPageFooterContent}
+                          onHeaderFooterDoubleClick={handleHeaderFooterDoubleClick}
+                          hfEditMode={hfEditPosition}
+                          onBodyClick={handleBodyClick}
+                          zoom={state.zoom}
+                          readOnly={readOnly}
+                          extensionManager={extensionManager}
+                          onDocumentChange={handleDocumentChange}
+                          onSelectionChange={(_from, _to) => {
+                            // Extract full selection state from PM and use the standard handler
+                            const view = pagedEditorRef.current?.getView();
+                            if (view) {
+                              const selectionState = extractSelectionState(view.state);
+                              handleSelectionChange(selectionState);
+
+                              // Detect comment/tracked-change marks at cursor to open sidebar card.
+                              // Collect marks from all sources — inclusive:false marks aren't
+                              // reported by $from.marks() at boundaries, and empty arrays are
+                              // truthy so an OR chain would short-circuit.
+                              const $from = view.state.selection.$from;
+                              const marks = [
+                                ...(view.state.storedMarks ?? []),
+                                ...($from.nodeAfter?.marks ?? []),
+                                ...($from.nodeBefore?.marks ?? []),
+                                ...$from.marks(),
+                              ];
+                              let cursorSidebarItem: string | null = null;
+                              for (const mark of marks) {
+                                if (mark.type.name === 'comment' && mark.attrs.commentId != null) {
+                                  cursorSidebarItem = `comment-${mark.attrs.commentId}`;
+                                  break;
+                                }
+                                if (
+                                  (mark.type.name === 'insertion' ||
+                                    mark.type.name === 'deletion') &&
+                                  mark.attrs.revisionId != null
+                                ) {
+                                  const revId = String(mark.attrs.revisionId);
+                                  const prefix = `tc-${revId}-`;
+                                  let match = commentSidebarItems.find((i) =>
+                                    i.id.startsWith(prefix)
+                                  );
+                                  // Insertion side of a replacement has a different revisionId;
+                                  // check alias map to find the correct sidebar card.
+                                  if (!match && revisionIdAliases) {
+                                    const aliasedId = revisionIdAliases.get(revId);
+                                    if (aliasedId) {
+                                      match = commentSidebarItems.find((i) => i.id === aliasedId);
+                                    }
+                                  }
+                                  if (match) {
+                                    cursorSidebarItem = match.id;
+                                    break;
+                                  }
+                                }
+                              }
+                              if (cursorSidebarItem) {
+                                setShowCommentsSidebar(true);
+                              }
+                              setExpandedSidebarItem(cursorSidebarItem);
+                            } else {
+                              handleSelectionChange(null);
+                            }
+                          }}
+                          externalPlugins={allExternalPlugins}
+                          onReady={(ref) => {
+                            onEditorViewReady?.(ref.getView()!);
+                          }}
+                          onRenderedDomContextReady={onRenderedDomContextReady}
+                          pluginOverlays={pluginOverlays}
+                          onHyperlinkClick={handleHyperlinkClick}
+                          onContextMenu={handleContextMenu}
+                          commentsSidebarOpen={sidebarOpen}
+                          onAnchorPositionsChange={setAnchorPositions}
+                          resolvedCommentIds={resolvedIdsForRender}
+                          scrollContainerRef={scrollContainerRef}
+                          sidebarOverlay={
+                            <>
+                              {allSidebarItems.length > 0 && (
+                                <UnifiedSidebar
+                                  items={allSidebarItems}
+                                  anchorPositions={anchorPositions}
+                                  renderedDomContext={pluginRenderedDomContext ?? null}
+                                  pageWidth={(() => {
+                                    const sp =
+                                      history.state?.package?.document?.finalSectionProperties;
+                                    return sp?.pageWidth ? Math.round(sp.pageWidth / 15) : 816;
+                                  })()}
+                                  zoom={state.zoom}
+                                  editorContainerRef={scrollContainerRef}
+                                  onExpandedItemChange={setExpandedSidebarItem}
+                                  activeItemId={expandedSidebarItem}
+                                />
+                              )}
+                              <CommentMarginMarkers
+                                comments={comments}
                                 anchorPositions={anchorPositions}
-                                renderedDomContext={pluginRenderedDomContext ?? null}
+                                zoom={state.zoom}
                                 pageWidth={(() => {
                                   const sp =
                                     history.state?.package?.document?.finalSectionProperties;
                                   return sp?.pageWidth ? Math.round(sp.pageWidth / 15) : 816;
                                 })()}
-                                zoom={state.zoom}
-                                editorContainerRef={scrollContainerRef}
-                                onExpandedItemChange={setExpandedSidebarItem}
+                                sidebarOpen={sidebarOpen}
+                                resolvedCommentIds={resolvedCommentIds}
+                                onMarkerClick={() => {
+                                  setShowCommentsSidebar(true);
+                                }}
                               />
-                            )}
-                            <CommentMarginMarkers
-                              comments={comments}
-                              anchorPositions={anchorPositions}
-                              zoom={state.zoom}
-                              pageWidth={(() => {
-                                const sp = history.state?.package?.document?.finalSectionProperties;
-                                return sp?.pageWidth ? Math.round(sp.pageWidth / 15) : 816;
-                              })()}
-                              sidebarOpen={sidebarOpen}
-                              resolvedCommentIds={resolvedCommentIds}
-                              onMarkerClick={() => {
-                                setShowCommentsSidebar(true);
-                              }}
-                            />
-                          </>
-                        }
-                      />
+                            </>
+                          }
+                        />
 
-                      {/* Floating "add comment" button — appears on right edge of page at selection */}
-                      {floatingCommentBtn != null && !isAddingComment && !readOnly && (
-                        <Tooltip content="Add comment" side="bottom" delayMs={300}>
-                          <button
-                            type="button"
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              const view = pagedEditorRef.current?.getView();
-                              if (view) {
-                                const { from, to } = view.state.selection;
-                                if (from !== to) {
-                                  setCommentSelectionRange({ from, to });
-                                  const pendingMark = view.state.schema.marks.comment.create({
-                                    commentId: PENDING_COMMENT_ID,
-                                  });
-                                  const tr = view.state.tr.addMark(from, to, pendingMark);
-                                  tr.setSelection(TextSelection.create(tr.doc, to));
-                                  view.dispatch(tr);
+                        {/* Floating "add comment" button — appears on right edge of page at selection */}
+                        {floatingCommentBtn != null && !isAddingComment && !readOnly && (
+                          <Tooltip content="Add comment" side="bottom" delayMs={300}>
+                            <button
+                              type="button"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const view = pagedEditorRef.current?.getView();
+                                if (view) {
+                                  const { from, to } = view.state.selection;
+                                  if (from !== to) {
+                                    setCommentSelectionRange({ from, to });
+                                    const pendingMark = view.state.schema.marks.comment.create({
+                                      commentId: PENDING_COMMENT_ID,
+                                    });
+                                    const tr = view.state.tr.addMark(from, to, pendingMark);
+                                    tr.setSelection(TextSelection.create(tr.doc, to));
+                                    view.dispatch(tr);
+                                  }
                                 }
-                              }
-                              setAddCommentYPosition(floatingCommentBtn.top);
-                              setShowCommentsSidebar(true);
-                              setIsAddingComment(true);
-                              setFloatingCommentBtn(null);
-                            }}
-                            style={{
-                              position: 'absolute',
-                              top: floatingCommentBtn.top,
-                              left: floatingCommentBtn.left,
-                              transform: 'translate(-50%, -50%)',
-                              zIndex: 50,
-                              width: 28,
-                              height: 28,
-                              borderRadius: 6,
-                              border: '1px solid rgba(26, 115, 232, 0.3)',
-                              backgroundColor: '#fff',
-                              color: '#1a73e8',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              boxShadow: '0 1px 3px rgba(60,64,67,0.2)',
-                              transition: 'background-color 0.15s ease, box-shadow 0.15s ease',
-                            }}
-                            onMouseOver={(e) => {
-                              (e.currentTarget as HTMLButtonElement).style.backgroundColor =
-                                'rgba(26, 115, 232, 0.08)';
-                              (e.currentTarget as HTMLButtonElement).style.boxShadow =
-                                '0 1px 4px rgba(26, 115, 232, 0.3)';
-                            }}
-                            onMouseOut={(e) => {
-                              (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#fff';
-                              (e.currentTarget as HTMLButtonElement).style.boxShadow =
-                                '0 1px 3px rgba(60,64,67,0.2)';
-                            }}
-                          >
-                            <MaterialSymbol name="add_comment" size={16} />
-                          </button>
-                        </Tooltip>
-                      )}
+                                setAddCommentYPosition(floatingCommentBtn.top);
+                                setShowCommentsSidebar(true);
+                                setIsAddingComment(true);
+                                setFloatingCommentBtn(null);
+                              }}
+                              style={{
+                                position: 'absolute',
+                                top: floatingCommentBtn.top,
+                                left: floatingCommentBtn.left,
+                                transform: 'translate(-50%, -50%)',
+                                zIndex: 50,
+                                width: 28,
+                                height: 28,
+                                borderRadius: 6,
+                                border: '1px solid rgba(26, 115, 232, 0.3)',
+                                backgroundColor: '#fff',
+                                color: '#1a73e8',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                boxShadow: '0 1px 3px rgba(60,64,67,0.2)',
+                                transition: 'background-color 0.15s ease, box-shadow 0.15s ease',
+                              }}
+                              onMouseOver={(e) => {
+                                (e.currentTarget as HTMLButtonElement).style.backgroundColor =
+                                  'rgba(26, 115, 232, 0.08)';
+                                (e.currentTarget as HTMLButtonElement).style.boxShadow =
+                                  '0 1px 4px rgba(26, 115, 232, 0.3)';
+                              }}
+                              onMouseOut={(e) => {
+                                (e.currentTarget as HTMLButtonElement).style.backgroundColor =
+                                  '#fff';
+                                (e.currentTarget as HTMLButtonElement).style.boxShadow =
+                                  '0 1px 3px rgba(60,64,67,0.2)';
+                              }}
+                            >
+                              <MaterialSymbol name="add_comment" size={16} />
+                            </button>
+                          </Tooltip>
+                        )}
 
-                      {/* Right-click context menu */}
-                      <TextContextMenu
-                        isOpen={contextMenu.isOpen}
-                        position={contextMenu.position}
-                        hasSelection={contextMenu.hasSelection}
-                        isEditable={!readOnly}
-                        items={contextMenuItems}
-                        onAction={handleContextMenuAction}
-                        onClose={() => setContextMenu((prev) => ({ ...prev, isOpen: false }))}
-                      />
-
-                      {/* Page navigation / indicator */}
-                      {showPageNumbers &&
-                        state.totalPages > 0 &&
-                        (enablePageNavigation ? (
-                          <PageNavigator
-                            currentPage={state.currentPage}
-                            totalPages={state.totalPages}
-                            onNavigate={handlePageNavigate}
-                            position={pageNumberPosition as PageNavigatorPosition}
-                            variant={pageNumberVariant as PageNavigatorVariant}
-                            floating
-                          />
-                        ) : (
-                          <PageNumberIndicator
-                            currentPage={state.currentPage}
-                            totalPages={state.totalPages}
-                            position={pageNumberPosition as PageIndicatorPosition}
-                            variant={pageNumberVariant as PageIndicatorVariant}
-                            floating
-                          />
-                        ))}
-
-                      {/* Inline Header/Footer Editor — positioned over the target area */}
-                      {hfEditPosition &&
-                        (() => {
-                          const activeHf = hfEditIsFirstPage
-                            ? hfEditPosition === 'header'
-                              ? firstPageHeaderContent
-                              : firstPageFooterContent
-                            : hfEditPosition === 'header'
-                              ? headerContent
-                              : footerContent;
-                          if (!activeHf) return null;
-                          const targetEl = getHfTargetElement(hfEditPosition);
-                          const parentEl = editorContentRef.current;
-                          if (!targetEl || !parentEl) return null;
-                          return (
-                            <InlineHeaderFooterEditor
-                              ref={hfEditorRef}
-                              headerFooter={activeHf}
-                              position={hfEditPosition}
-                              styles={history.state?.package.styles}
-                              targetElement={targetEl}
-                              parentElement={parentEl}
-                              onSave={handleHeaderFooterSave}
-                              onClose={() => setHfEditPosition(null)}
-                              onSelectionChange={handleSelectionChange}
-                              onRemove={handleRemoveHeaderFooter}
+                        {/* Page navigation / indicator */}
+                        {showPageNumbers &&
+                          state.totalPages > 0 &&
+                          (enablePageNavigation ? (
+                            <PageNavigator
+                              currentPage={state.currentPage}
+                              totalPages={state.totalPages}
+                              onNavigate={handlePageNavigate}
+                              position={pageNumberPosition as PageNavigatorPosition}
+                              variant={pageNumberVariant as PageNavigatorVariant}
+                              floating
                             />
-                          );
-                        })()}
-                    </div>
-                  </div>
-                  {/* end editor flex wrapper */}
-                </div>
-                {/* end scroll container */}
+                          ) : (
+                            <PageNumberIndicator
+                              currentPage={state.currentPage}
+                              totalPages={state.totalPages}
+                              position={pageNumberPosition as PageIndicatorPosition}
+                              variant={pageNumberVariant as PageIndicatorVariant}
+                              floating
+                            />
+                          ))}
 
-                {/* Document outline sidebar — absolutely positioned, doesn't scroll */}
-                {showOutline && (
-                  <DocumentOutline
-                    headings={outlineHeadings}
-                    onHeadingClick={handleHeadingInfoClick}
-                    onClose={() => setShowOutline(false)}
-                    topOffset={toolbarHeight}
+                        {/* Inline Header/Footer Editor — positioned over the target area */}
+                        {hfEditPosition &&
+                          (() => {
+                            const activeHf = hfEditIsFirstPage
+                              ? hfEditPosition === 'header'
+                                ? firstPageHeaderContent
+                                : firstPageFooterContent
+                              : hfEditPosition === 'header'
+                                ? headerContent
+                                : footerContent;
+                            if (!activeHf) return null;
+                            const targetEl = getHfTargetElement(hfEditPosition);
+                            const parentEl = editorContentRef.current;
+                            if (!targetEl || !parentEl) return null;
+                            return (
+                              <InlineHeaderFooterEditor
+                                ref={hfEditorRef}
+                                headerFooter={activeHf}
+                                position={hfEditPosition}
+                                styles={history.state?.package.styles}
+                                targetElement={targetEl}
+                                parentElement={parentEl}
+                                onSave={handleHeaderFooterSave}
+                                onClose={() => setHfEditPosition(null)}
+                                onSelectionChange={handleSelectionChange}
+                                onRemove={handleRemoveHeaderFooter}
+                              />
+                            );
+                          })()}
+                      </div>
+                    </div>
+                    {/* end editor flex wrapper */}
+                  </div>
+                  {/* end scroll container */}
+
+                  {/* Page indicator — Google Docs style, next to scrollbar while scrolling */}
+                  {scrollPageInfo.totalPages > 1 && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        right: 24,
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                        color: 'white',
+                        padding: '6px 12px',
+                        borderRadius: '4px',
+                        fontSize: '12px',
+                        fontFamily:
+                          '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                        fontWeight: 500,
+                        whiteSpace: 'nowrap',
+                        pointerEvents: 'none',
+                        zIndex: 1000,
+                        opacity: scrollPageInfo.visible ? 1 : 0,
+                        transition: 'opacity 0.3s ease',
+                        userSelect: 'none',
+                      }}
+                      aria-live="polite"
+                      role="status"
+                    >
+                      {scrollPageInfo.currentPage} of {scrollPageInfo.totalPages}
+                    </div>
+                  )}
+
+                  {/* Document outline sidebar — absolutely positioned, doesn't scroll */}
+                  {showOutline && (
+                    <DocumentOutline
+                      headings={outlineHeadings}
+                      onHeadingClick={handleHeadingInfoClick}
+                      onClose={() => setShowOutline(false)}
+                      topOffset={toolbarHeight}
+                    />
+                  )}
+
+                  {/* Unified sidebar (comments + plugin items) rendered inside PagedEditor via sidebarOverlay prop */}
+
+                  {/* Outline toggle button — absolutely positioned below toolbar */}
+                  {showOutlineButton && !showOutline && (
+                    <button
+                      className="docx-outline-nav"
+                      onClick={handleToggleOutline}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      title="Show document outline"
+                      style={{
+                        position: 'absolute',
+                        left: 48,
+                        top: toolbarHeight + 12,
+                        zIndex: 20,
+                        background: 'transparent',
+                        border: 'none',
+                        borderRadius: '50%',
+                        padding: 6,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <MaterialSymbol
+                        name="format_list_bulleted"
+                        size={20}
+                        style={{ color: '#444746' }}
+                      />
+                    </button>
+                  )}
+                </div>
+                {/* end wrapper for scroll container + outline */}
+              </div>
+
+              {/* Hyperlink popup (Google Docs-style) */}
+              <HyperlinkPopup
+                data={hyperlinkPopupData}
+                onNavigate={handleHyperlinkPopupNavigate}
+                onCopy={handleHyperlinkPopupCopy}
+                onEdit={handleHyperlinkPopupEdit}
+                onRemove={handleHyperlinkPopupRemove}
+                onClose={handleHyperlinkPopupClose}
+                readOnly={readOnly}
+              />
+
+              {/* Right-click context menu */}
+              <TextContextMenu
+                isOpen={contextMenu.isOpen}
+                position={contextMenu.position}
+                hasSelection={contextMenu.hasSelection}
+                isEditable={!readOnly}
+                items={contextMenuItems}
+                onAction={handleContextMenuAction}
+                onClose={handleContextMenuClose}
+              />
+
+              {/* Toast notifications */}
+              <Toaster position="bottom-right" />
+
+              {/* Lazy-loaded dialogs — only fetched when first opened */}
+              <Suspense fallback={null}>
+                {findReplace.state.isOpen && (
+                  <FindReplaceDialog
+                    isOpen={findReplace.state.isOpen}
+                    onClose={findReplace.close}
+                    onFind={handleFind}
+                    onFindNext={handleFindNext}
+                    onFindPrevious={handleFindPrevious}
+                    onReplace={handleReplace}
+                    onReplaceAll={handleReplaceAll}
+                    initialSearchText={findReplace.state.searchText}
+                    replaceMode={findReplace.state.replaceMode}
+                    currentResult={findResultRef.current}
                   />
                 )}
-
-                {/* Unified sidebar (comments + plugin items) rendered inside PagedEditor via sidebarOverlay prop */}
-
-                {/* Outline toggle button — absolutely positioned below toolbar */}
-                {showOutlineButton && !showOutline && (
-                  <button
-                    className="docx-outline-nav"
-                    onClick={handleToggleOutline}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    title="Show document outline"
-                    style={{
-                      position: 'absolute',
-                      left: 48,
-                      top: toolbarHeight + 12,
-                      zIndex: 20,
-                      background: 'transparent',
-                      border: 'none',
-                      borderRadius: '50%',
-                      padding: 6,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <MaterialSymbol
-                      name="format_list_bulleted"
-                      size={20}
-                      style={{ color: '#444746' }}
-                    />
-                  </button>
+                {hyperlinkDialog.state.isOpen && (
+                  <HyperlinkDialog
+                    isOpen={hyperlinkDialog.state.isOpen}
+                    onClose={hyperlinkDialog.close}
+                    onSubmit={handleHyperlinkSubmit}
+                    onRemove={hyperlinkDialog.state.isEditing ? handleHyperlinkRemove : undefined}
+                    initialData={hyperlinkDialog.state.initialData}
+                    selectedText={hyperlinkDialog.state.selectedText}
+                    isEditing={hyperlinkDialog.state.isEditing}
+                  />
                 )}
-              </div>
-              {/* end wrapper for scroll container + outline */}
-            </div>
-
-            {/* Hyperlink popup (Google Docs-style) */}
-            <HyperlinkPopup
-              data={hyperlinkPopupData}
-              onNavigate={handleHyperlinkPopupNavigate}
-              onCopy={handleHyperlinkPopupCopy}
-              onEdit={handleHyperlinkPopupEdit}
-              onRemove={handleHyperlinkPopupRemove}
-              onClose={handleHyperlinkPopupClose}
-              readOnly={readOnly}
-            />
-
-            {/* Right-click context menu */}
-            <TextContextMenu
-              isOpen={contextMenu.isOpen}
-              position={contextMenu.position}
-              hasSelection={contextMenu.hasSelection}
-              isEditable={!readOnly}
-              items={contextMenuItems}
-              onAction={handleContextMenuAction}
-              onClose={handleContextMenuClose}
-            />
-
-            {/* Toast notifications */}
-            <Toaster position="bottom-right" />
-
-            {/* Lazy-loaded dialogs — only fetched when first opened */}
-            <Suspense fallback={null}>
-              {findReplace.state.isOpen && (
-                <FindReplaceDialog
-                  isOpen={findReplace.state.isOpen}
-                  onClose={findReplace.close}
-                  onFind={handleFind}
-                  onFindNext={handleFindNext}
-                  onFindPrevious={handleFindPrevious}
-                  onReplace={handleReplace}
-                  onReplaceAll={handleReplaceAll}
-                  initialSearchText={findReplace.state.searchText}
-                  replaceMode={findReplace.state.replaceMode}
-                  currentResult={findResultRef.current}
-                />
-              )}
-              {hyperlinkDialog.state.isOpen && (
-                <HyperlinkDialog
-                  isOpen={hyperlinkDialog.state.isOpen}
-                  onClose={hyperlinkDialog.close}
-                  onSubmit={handleHyperlinkSubmit}
-                  onRemove={hyperlinkDialog.state.isEditing ? handleHyperlinkRemove : undefined}
-                  initialData={hyperlinkDialog.state.initialData}
-                  selectedText={hyperlinkDialog.state.selectedText}
-                  isEditing={hyperlinkDialog.state.isEditing}
-                />
-              )}
-              {tablePropsOpen && (
-                <TablePropertiesDialog
-                  isOpen={tablePropsOpen}
-                  onClose={() => setTablePropsOpen(false)}
-                  onApply={(props) => {
-                    const view = getActiveEditorView();
-                    if (view) {
-                      setTableProperties(props)(view.state, view.dispatch);
+                {tablePropsOpen && (
+                  <TablePropertiesDialog
+                    isOpen={tablePropsOpen}
+                    onClose={() => setTablePropsOpen(false)}
+                    onApply={(props) => {
+                      const view = getActiveEditorView();
+                      if (view) {
+                        setTableProperties(props)(view.state, view.dispatch);
+                      }
+                    }}
+                    currentProps={
+                      state.pmTableContext?.table?.attrs as Record<string, unknown> | undefined
                     }
-                  }}
-                  currentProps={
-                    state.pmTableContext?.table?.attrs as Record<string, unknown> | undefined
-                  }
-                />
-              )}
-              {imagePositionOpen && (
-                <ImagePositionDialog
-                  isOpen={imagePositionOpen}
-                  onClose={() => setImagePositionOpen(false)}
-                  onApply={handleApplyImagePosition}
-                />
-              )}
-              {imagePropsOpen && (
-                <ImagePropertiesDialog
-                  isOpen={imagePropsOpen}
-                  onClose={() => setImagePropsOpen(false)}
-                  onApply={handleApplyImageProperties}
-                  currentData={
-                    state.pmImageContext
-                      ? {
-                          alt: state.pmImageContext.alt ?? undefined,
-                          borderWidth: state.pmImageContext.borderWidth ?? undefined,
-                          borderColor: state.pmImageContext.borderColor ?? undefined,
-                          borderStyle: state.pmImageContext.borderStyle ?? undefined,
-                        }
-                      : undefined
-                  }
-                />
-              )}
-              {imageSizeOpen && (
-                <ImageSizeDialog
-                  isOpen={imageSizeOpen}
-                  onClose={handleCloseImageSizeDialog}
-                  onApply={handleApplyImageSize}
-                  initialWidth={imageSizeDefaults.width}
-                  initialHeight={imageSizeDefaults.height}
-                  initialLock={imageSizeDefaults.lock}
-                  autoFocus={imageSizeAutoFocus ?? undefined}
-                />
-              )}
-              {showPageSetup && (
-                <PageSetupDialog
-                  isOpen={showPageSetup}
-                  onClose={() => setShowPageSetup(false)}
-                  onApply={handlePageSetupApply}
-                  currentProps={history.state?.package.document?.finalSectionProperties}
-                />
-              )}
-              {footnotePropsOpen && (
-                <FootnotePropertiesDialog
-                  isOpen={footnotePropsOpen}
-                  onClose={() => setFootnotePropsOpen(false)}
-                  onApply={handleApplyFootnoteProperties}
-                  footnotePr={history.state?.package.document?.finalSectionProperties?.footnotePr}
-                  endnotePr={history.state?.package.document?.finalSectionProperties?.endnotePr}
-                />
-              )}
-            </Suspense>
-            {/* InlineHeaderFooterEditor is rendered inside the editor content area (position:relative div) */}
-            {/* Hidden file input for image insertion */}
-            <input
-              ref={imageInputRef}
-              type="file"
-              accept="image/*"
-              style={{ display: 'none' }}
-              onChange={handleImageFileChange}
-            />
-          </div>
-        </ColorHistoryProvider>
-      </ErrorBoundary>
-    </ErrorProvider>
+                  />
+                )}
+                {splitCellDialogState.isOpen && (
+                  <SplitCellDialog
+                    isOpen={splitCellDialogState.isOpen}
+                    onClose={handleSplitCellDialogClose}
+                    onApply={handleSplitCellDialogApply}
+                    initialRows={splitCellDialogState.initialRows}
+                    initialCols={splitCellDialogState.initialCols}
+                    minRows={splitCellDialogState.minRows}
+                    minCols={splitCellDialogState.minCols}
+                  />
+                )}
+                {imagePositionOpen && (
+                  <ImagePositionDialog
+                    isOpen={imagePositionOpen}
+                    onClose={() => setImagePositionOpen(false)}
+                    onApply={handleApplyImagePosition}
+                  />
+                )}
+                {imagePropsOpen && (
+                  <ImagePropertiesDialog
+                    isOpen={imagePropsOpen}
+                    onClose={() => setImagePropsOpen(false)}
+                    onApply={handleApplyImageProperties}
+                    currentData={
+                      state.pmImageContext
+                        ? {
+                            alt: state.pmImageContext.alt ?? undefined,
+                            borderWidth: state.pmImageContext.borderWidth ?? undefined,
+                            borderColor: state.pmImageContext.borderColor ?? undefined,
+                            borderStyle: state.pmImageContext.borderStyle ?? undefined,
+                          }
+                        : undefined
+                    }
+                  />
+                )}
+                {imageSizeOpen && (
+                  <ImageSizeDialog
+                    isOpen={imageSizeOpen}
+                    onClose={handleCloseImageSizeDialog}
+                    onApply={handleApplyImageSize}
+                    initialWidth={imageSizeDefaults.width}
+                    initialHeight={imageSizeDefaults.height}
+                    initialLock={imageSizeDefaults.lock}
+                    autoFocus={imageSizeAutoFocus ?? undefined}
+                  />
+                )}
+                {showPageSetup && (
+                  <PageSetupDialog
+                    isOpen={showPageSetup}
+                    onClose={() => setShowPageSetup(false)}
+                    onApply={handlePageSetupApply}
+                    currentProps={history.state?.package.document?.finalSectionProperties}
+                  />
+                )}
+                {footnotePropsOpen && (
+                  <FootnotePropertiesDialog
+                    isOpen={footnotePropsOpen}
+                    onClose={() => setFootnotePropsOpen(false)}
+                    onApply={handleApplyFootnoteProperties}
+                    footnotePr={history.state?.package.document?.finalSectionProperties?.footnotePr}
+                    endnotePr={history.state?.package.document?.finalSectionProperties?.endnotePr}
+                  />
+                )}
+              </Suspense>
+              {/* InlineHeaderFooterEditor is rendered inside the editor content area (position:relative div) */}
+              {/* Hidden file input for image insertion */}
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={handleImageFileChange}
+              />
+            </div>
+          </ColorHistoryProvider>
+        </ErrorBoundary>
+      </ErrorProvider>
+    </LocaleProvider>
   );
 });
 

@@ -14,123 +14,125 @@
  * 4. Selection changes → compute rects → update overlay
  */
 
-import React, {
-  useRef,
-  useState,
-  useCallback,
-  useEffect,
-  useMemo,
-  forwardRef,
-  useImperativeHandle,
-  memo,
-} from 'react';
-import type { CSSProperties } from 'react';
-import { NodeSelection, TextSelection } from 'prosemirror-state';
-import type { EditorState, Transaction, Plugin } from 'prosemirror-state';
-import { CellSelection } from 'prosemirror-tables';
-import type { EditorView } from 'prosemirror-view';
-
-// Internal components
-import { HiddenProseMirror, type HiddenProseMirrorRef } from './HiddenProseMirror';
-import { SelectionOverlay } from './SelectionOverlay';
-import { ImageSelectionOverlay, type ImageSelectionInfo } from './ImageSelectionOverlay';
-import { PERF_ENABLED } from '../utils/perfFlags';
+import { getFootnoteText } from '@giantanalyticsai/docx-core/docx/footnoteParser';
+import { clickToPosition } from '@giantanalyticsai/docx-core/layout-bridge/clickToPosition';
+import { clickToPositionDom } from '@giantanalyticsai/docx-core/layout-bridge/clickToPositionDom';
+import {
+  buildFootnoteContentMap,
+  calculateFootnoteReservedHeights,
+  collectFootnoteRefs,
+  mapFootnotesToPages,
+} from '@giantanalyticsai/docx-core/layout-bridge/footnoteLayout';
+import {
+  getPageTop,
+  hitTestFragment,
+  hitTestTableCell,
+} from '@giantanalyticsai/docx-core/layout-bridge/hitTest';
+// Layout bridge
+import {
+  applyIncrementalResult,
+  computeDirtyRange,
+  createIncrementalBlockCache,
+  saveBlockState,
+  updateBlocks,
+} from '@giantanalyticsai/docx-core/layout-bridge/incrementalBlockCache';
+import type { IncrementalUpdateResult } from '@giantanalyticsai/docx-core/layout-bridge/incrementalBlockCache';
+import {
+  clearAllCaches,
+  type FloatingImageZone,
+  getCachedParagraphMeasure,
+  measureParagraph,
+  resetCanvasContext,
+  setCachedParagraphMeasure,
+} from '@giantanalyticsai/docx-core/layout-bridge/measuring';
+import {
+  type CaretPosition,
+  getCaretPosition,
+  type SelectionRect,
+  selectionToRects,
+} from '@giantanalyticsai/docx-core/layout-bridge/selectionRects';
+import {
+  convertBorderSpecToLayout,
+  toFlowBlocks,
+} from '@giantanalyticsai/docx-core/layout-bridge/toFlowBlocks';
+import type { ColumnLayout } from '@giantanalyticsai/docx-core/layout-engine';
 
 // Layout engine
 import { layoutDocument } from '@giantanalyticsai/docx-core/layout-engine';
-import type { ColumnLayout } from '@giantanalyticsai/docx-core/layout-engine';
 import type {
-  Layout,
   FlowBlock,
-  Measure,
-  ParagraphBlock,
-  TableBlock,
-  TableMeasure,
   ImageBlock,
   ImageRun,
+  Layout,
+  Measure,
   PageMargins,
-  Run,
-  RunFormatting,
   ParagraphAttrs,
+  ParagraphBlock,
   ParagraphBorders,
   ParagraphSpacing,
-  TextBoxBlock,
+  Run,
+  RunFormatting,
   SectionBreakBlock,
+  TableBlock,
+  TableMeasure,
+  TextBoxBlock,
 } from '@giantanalyticsai/docx-core/layout-engine/types';
 import {
   DEFAULT_TEXTBOX_MARGINS,
   DEFAULT_TEXTBOX_WIDTH,
 } from '@giantanalyticsai/docx-core/layout-engine/types';
-
-// Table commands (for quick-action insert buttons)
-import { addRowBelow, addColumnRight } from '@giantanalyticsai/docx-core/prosemirror';
-
-// Layout bridge
-import {
-  toFlowBlocks,
-  convertBorderSpecToLayout,
-} from '@giantanalyticsai/docx-core/layout-bridge/toFlowBlocks';
-import {
-  measureParagraph,
-  resetCanvasContext,
-  clearAllCaches,
-  getCachedParagraphMeasure,
-  setCachedParagraphMeasure,
-  type FloatingImageZone,
-} from '@giantanalyticsai/docx-core/layout-bridge/measuring';
-import {
-  hitTestFragment,
-  hitTestTableCell,
-  getPageTop,
-} from '@giantanalyticsai/docx-core/layout-bridge/hitTest';
-import { clickToPosition } from '@giantanalyticsai/docx-core/layout-bridge/clickToPosition';
-import { clickToPositionDom } from '@giantanalyticsai/docx-core/layout-bridge/clickToPositionDom';
-import {
-  selectionToRects,
-  getCaretPosition,
-  type SelectionRect,
-  type CaretPosition,
-} from '@giantanalyticsai/docx-core/layout-bridge/selectionRects';
-
 // Layout painter
-import { LayoutPainter, type BlockLookup } from '@giantanalyticsai/docx-core/layout-painter';
+import { type BlockLookup, LayoutPainter } from '@giantanalyticsai/docx-core/layout-painter';
 import {
-  renderPages,
-  type RenderPageOptions,
-  type HeaderFooterContent,
   type FootnoteRenderItem,
+  type HeaderFooterContent,
+  type RenderPageOptions,
+  renderPages,
 } from '@giantanalyticsai/docx-core/layout-painter/renderPage';
-
-// Selection sync
-import { LayoutSelectionGate } from './LayoutSelectionGate';
-
-// Visual line navigation hook
-import { useVisualLineNavigation } from './useVisualLineNavigation';
-import { useDragAutoScroll } from './useDragAutoScroll';
-import { createDocumentChangePipeline } from './documentChangePipeline';
-import { mapDirtyRangesToTopLevelIndices } from './dirtyRangeMapper';
-
-// Sidebar constants
-import { SIDEBAR_DOCUMENT_SHIFT } from '../components/sidebar/constants';
-
+// Table commands (for quick-action insert buttons)
+import { addColumnRight, addRowBelow } from '@giantanalyticsai/docx-core/prosemirror';
+import type { Footnote } from '@giantanalyticsai/docx-core/types/content';
 // Types
 import type {
   Document,
-  Theme,
-  StyleDefinitions,
-  SectionProperties,
   HeaderFooter,
+  SectionProperties,
+  StyleDefinitions,
+  Theme,
 } from '@giantanalyticsai/docx-core/types/document';
-import type { Footnote } from '@giantanalyticsai/docx-core/types/content';
-import { getFootnoteText } from '@giantanalyticsai/docx-core/docx/footnoteParser';
+import { findWordBoundaries } from '@giantanalyticsai/docx-core/utils/textSelection';
+import type { EditorState, Plugin, Transaction } from 'prosemirror-state';
+import { NodeSelection, TextSelection } from 'prosemirror-state';
+import type { CellSelection } from 'prosemirror-tables';
+import type { EditorView } from 'prosemirror-view';
+import type React from 'react';
+import type { CSSProperties } from 'react';
 import {
-  collectFootnoteRefs,
-  mapFootnotesToPages,
-  buildFootnoteContentMap,
-  calculateFootnoteReservedHeights,
-} from '@giantanalyticsai/docx-core/layout-bridge/footnoteLayout';
-import type { RenderedDomContext } from '../plugin-api/types';
+  forwardRef,
+  memo,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+// Sidebar constants
+import { SIDEBAR_DOCUMENT_SHIFT } from '../components/sidebar/constants';
+import { PERF_ENABLED } from '../utils/perfFlags';
 import { createRenderedDomContext } from '../plugin-api/RenderedDomContext';
+import type { RenderedDomContext } from '../plugin-api/types';
+// Internal components
+import { HiddenProseMirror, type HiddenProseMirrorRef } from './HiddenProseMirror';
+import { type ImageSelectionInfo, ImageSelectionOverlay } from './ImageSelectionOverlay';
+// Selection sync
+import { LayoutSelectionGate } from './LayoutSelectionGate';
+import { SelectionOverlay } from './SelectionOverlay';
+import { useDragAutoScroll } from './useDragAutoScroll';
+// Visual line navigation hook
+import { useVisualLineNavigation } from './useVisualLineNavigation';
+import { createDocumentChangePipeline } from './documentChangePipeline';
+import { mapDirtyRangesToTopLevelIndices } from './dirtyRangeMapper';
 
 // =============================================================================
 // TYPES
@@ -726,6 +728,10 @@ function measureTableBlock(tableBlock: TableBlock, contentWidth: number): TableM
   };
 }
 
+// =============================================================================
+// YIELD TO MAIN THREAD
+// =============================================================================
+
 /**
  * Extract floating image exclusion zones from all blocks.
  * Called before measurement to determine line width reductions.
@@ -1064,6 +1070,123 @@ function measureBlocks(blocks: FlowBlock[], contentWidth: number | number[]): Me
       return { totalHeight: 20 } as Measure;
     }
   });
+}
+
+/**
+ * Incrementally measure blocks, reusing cached measures before dirtyFrom.
+ *
+ * Floating zone extraction still runs on ALL blocks (it's fast). Only the
+ * per-block measureBlock() calls are skipped for clean blocks before dirtyFrom.
+ */
+function measureBlocksIncremental(
+  blocks: FlowBlock[],
+  contentWidth: number | number[],
+  cachedMeasures: Measure[],
+  dirtyFrom: number
+): Measure[] {
+  const defaultWidth = Array.isArray(contentWidth) ? (contentWidth[0] ?? 0) : contentWidth;
+
+  // Full floating zone pre-scan (fast, must cover all blocks since zones could shift)
+  const floatingZonesWithAnchors = extractFloatingZones(blocks, defaultWidth);
+
+  const marginRelative = floatingZonesWithAnchors.filter((z) => z.isMarginRelative);
+  const paragraphRelative = floatingZonesWithAnchors.filter((z) => !z.isMarginRelative);
+
+  const marginByTopY = new Map<number, FloatingZoneWithAnchor[]>();
+  for (const z of marginRelative) {
+    const group = marginByTopY.get(z.topY) ?? [];
+    group.push(z);
+    marginByTopY.set(z.topY, group);
+  }
+
+  const adjustedZones: FloatingZoneWithAnchor[] = [...paragraphRelative];
+  for (const group of marginByTopY.values()) {
+    const minAnchor = Math.min(...group.map((z) => z.anchorBlockIndex));
+    for (const z of group) {
+      adjustedZones.push({ ...z, anchorBlockIndex: minAnchor });
+    }
+  }
+
+  const zonesByAnchor = new Map<number, FloatingImageZone[]>();
+  for (const z of adjustedZones) {
+    const existing = zonesByAnchor.get(z.anchorBlockIndex) ?? [];
+    existing.push({
+      leftMargin: z.leftMargin,
+      rightMargin: z.rightMargin,
+      topY: z.topY,
+      bottomY: z.bottomY,
+    });
+    zonesByAnchor.set(z.anchorBlockIndex, existing);
+  }
+
+  const anchorIndices = new Set(adjustedZones.map((z) => z.anchorBlockIndex));
+
+  // If any floating zone anchor falls before dirtyFrom, we must re-measure from that
+  // anchor onward (zones affect cumulativeY tracking). Find the effective start.
+  let effectiveDirtyFrom = dirtyFrom;
+  for (const anchorIdx of anchorIndices) {
+    if (anchorIdx < effectiveDirtyFrom) {
+      effectiveDirtyFrom = anchorIdx;
+    }
+  }
+
+  const measures: Measure[] = new Array(blocks.length);
+
+  // Reuse cached measures for clean blocks before effectiveDirtyFrom
+  let cumulativeY = 0;
+  let activeZones: FloatingImageZone[] = [];
+
+  for (let i = 0; i < effectiveDirtyFrom && i < blocks.length; i++) {
+    const cached = i < cachedMeasures.length ? cachedMeasures[i] : undefined;
+    if (cached) {
+      measures[i] = cached;
+      if ('totalHeight' in cached) {
+        const block = blocks[i];
+        if (!(block.kind === 'table' && (block as TableBlock).floating)) {
+          cumulativeY += (cached as { totalHeight: number }).totalHeight;
+        }
+      }
+    } else {
+      // No cached measure — fall back to measuring
+      effectiveDirtyFrom = i;
+      break;
+    }
+  }
+
+  // Measure from effectiveDirtyFrom onward
+  for (let blockIndex = effectiveDirtyFrom; blockIndex < blocks.length; blockIndex++) {
+    const block = blocks[blockIndex];
+
+    if (anchorIndices.has(blockIndex)) {
+      cumulativeY = 0;
+      activeZones = zonesByAnchor.get(blockIndex) ?? [];
+    }
+
+    const zones = activeZones.length > 0 ? activeZones : undefined;
+
+    try {
+      const blockWidth = Array.isArray(contentWidth)
+        ? (contentWidth[blockIndex] ?? defaultWidth)
+        : contentWidth;
+      const measure = measureBlock(block, blockWidth, zones, cumulativeY);
+
+      if ('totalHeight' in measure) {
+        if (!(block.kind === 'table' && (block as TableBlock).floating)) {
+          cumulativeY += measure.totalHeight;
+        }
+      }
+
+      measures[blockIndex] = measure;
+    } catch (error) {
+      console.error(
+        `[measureBlocksIncremental] Error measuring block ${blockIndex} (${block.kind}):`,
+        error
+      );
+      measures[blockIndex] = { totalHeight: 20 } as Measure;
+    }
+  }
+
+  return measures;
 }
 
 /**
@@ -1634,6 +1757,7 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
     const pagesContainerRef = useRef<HTMLDivElement>(null);
     const hiddenPMRef = useRef<HiddenProseMirrorRef>(null);
     const painterRef = useRef<LayoutPainter | null>(null);
+    const incrementalCacheRef = useRef(createIncrementalBlockCache());
 
     // Visual line navigation (ArrowUp/ArrowDown with sticky X)
     const { handlePMKeyDown } = useVisualLineNavigation({ pagesContainerRef });
@@ -1848,13 +1972,8 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
      * 4. Paint pages to DOM
      */
     const runLayoutPipeline = useCallback(
-      (state: EditorState) => {
-        const perfEnabled = PERF_ENABLED;
-        const pipelineStart = perfEnabled ? performance.now() : 0;
-        let toFlowBlocksMs = 0;
-        let measureBlocksMs = 0;
-        let layoutDocumentMs = 0;
-        let renderPagesMs = 0;
+      (state: EditorState, transaction?: Transaction) => {
+        const pipelineStart = performance.now();
 
         // Capture current state sequence for this layout run
         const currentEpoch = syncCoordinator.getStateSeq();
@@ -1864,38 +1983,78 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
 
         try {
           // Step 1: Convert PM doc to flow blocks
-          let stepStart = perfEnabled ? performance.now() : 0;
+          // Try incremental update first, fall back to full conversion
+          let stepStart = performance.now();
           const pageContentHeight = pageSize.h - margins.top - margins.bottom;
-          const newBlocks = toFlowBlocks(state.doc, { theme: _theme, pageContentHeight });
-          let stepTime = perfEnabled ? performance.now() - stepStart : 0;
-          if (perfEnabled) {
-            toFlowBlocksMs = stepTime;
-            if (stepTime > 500) {
-              console.warn(
-                `[PagedEditor] toFlowBlocks took ${Math.round(stepTime)}ms (${newBlocks.length} blocks)`
+          const toFlowOpts = { theme: _theme, pageContentHeight };
+          const cache = incrementalCacheRef.current;
+          let newBlocks: FlowBlock[];
+          let incrementalDirtyFrom = -1; // -1 = full pipeline, >=0 = incremental from this block
+          let pendingIncrementalResult: IncrementalUpdateResult | null = null;
+
+          // Try incremental path when we have a previous doc to compare against.
+          // Uses PM node identity comparison (not transaction steps) so it works
+          // for both transaction-driven and direct runLayoutPipeline calls.
+          if (cache.prevDoc && cache.prevDoc !== state.doc) {
+            const dirtyRange = computeDirtyRange(cache, state.doc, transaction);
+            if (dirtyRange) {
+              // updateBlocks returns a result WITHOUT mutating the cache.
+              // We apply it only after the pipeline commits (saveBlockState).
+              pendingIncrementalResult = updateBlocks(
+                cache,
+                state.doc,
+                dirtyRange.dirtyFrom,
+                dirtyRange.dirtyTo,
+                toFlowOpts
               );
+              newBlocks = pendingIncrementalResult.blocks;
+              incrementalDirtyFrom = dirtyRange.dirtyFrom;
+            } else {
+              // Dirty range too large or section break hit — full conversion
+              newBlocks = toFlowBlocks(state.doc, toFlowOpts);
             }
+          } else {
+            newBlocks = toFlowBlocks(state.doc, toFlowOpts);
+          }
+
+          const usedIncremental = incrementalDirtyFrom >= 0;
+          let stepTime = performance.now() - stepStart;
+          // Always log step timing for performance diagnostics
+          console.debug(
+            `[PagedEditor] Step 1 (${usedIncremental ? `incremental from ${incrementalDirtyFrom}` : 'full'}) → ${stepTime.toFixed(1)}ms (${newBlocks.length} blocks)`
+          );
+          if (stepTime > 500) {
+            console.warn(
+              `[PagedEditor] ${usedIncremental ? 'incremental' : 'toFlowBlocks'} took ${Math.round(stepTime)}ms (${newBlocks.length} blocks)`
+            );
           }
           setBlocks(newBlocks);
 
-          // Step 2: Measure all blocks.
-          // Must use full measureBlocks() because measurements depend on
-          // inter-block context (floating zones, cumulative Y). Individual
-          // block measurements cannot be cached by PM node identity since
-          // floating tables/images create exclusion zones that affect
-          // neighboring paragraphs' line widths.
-          stepStart = perfEnabled ? performance.now() : 0;
-          // Compute per-block widths accounting for section breaks with different column configs
+          // Step 2: Measure blocks.
+          // Incremental path reuses cached measures for clean blocks before dirtyFrom.
+          // Full path measures all blocks from scratch. Both paths do full floating
+          // zone extraction (it's fast and zones could shift).
+          stepStart = performance.now();
           const blockWidths = computePerBlockWidths(newBlocks, contentWidth, columns);
-          const newMeasures = measureBlocks(newBlocks, blockWidths);
-          stepTime = perfEnabled ? performance.now() - stepStart : 0;
-          if (perfEnabled) {
-            measureBlocksMs = stepTime;
-            if (stepTime > 1000) {
-              console.warn(
-                `[PagedEditor] measureBlocks took ${Math.round(stepTime)}ms (${newBlocks.length} blocks)`
-              );
-            }
+          let newMeasures: Measure[];
+          if (usedIncremental && cache.measures.length > 0) {
+            newMeasures = measureBlocksIncremental(
+              newBlocks,
+              blockWidths,
+              cache.measures,
+              incrementalDirtyFrom
+            );
+          } else {
+            newMeasures = measureBlocks(newBlocks, blockWidths);
+          }
+          stepTime = performance.now() - stepStart;
+          console.debug(
+            `[PagedEditor] Step 2 (${usedIncremental ? `measureIncremental from ${incrementalDirtyFrom}` : 'full'}) → ${stepTime.toFixed(1)}ms (${newBlocks.length} blocks)`
+          );
+          if (stepTime > 1000) {
+            console.warn(
+              `[PagedEditor] ${usedIncremental ? 'measureBlocksIncremental' : 'measureBlocks'} took ${Math.round(stepTime)}ms (${newBlocks.length} blocks)`
+            );
           }
           setMeasures(newMeasures);
 
@@ -1963,7 +2122,7 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
           }
 
           // Step 3: Layout blocks onto pages (two-pass if footnotes exist)
-          stepStart = perfEnabled ? performance.now() : 0;
+          stepStart = performance.now();
           let newLayout: Layout;
           let pageFootnoteMap = new Map<number, number[]>();
           let footnoteContentMap = new Map<number, { displayNumber: number; height: number }>();
@@ -2024,24 +2183,58 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
               newLayout = pass1Layout;
             }
           } else {
-            // No footnotes — single pass
-            newLayout = layoutDocument(newBlocks, newMeasures, layoutOpts);
+            // No footnotes — single pass.
+            // Use resumed layout when incremental path succeeded and we have a snapshot.
+            if (usedIncremental && cache.paginatorSnapshotAtBlock.size > 0) {
+              // Find the closest snapshot at or before dirtyFrom
+              let snapshotBlock = -1;
+              for (const blockIdx of cache.paginatorSnapshotAtBlock.keys()) {
+                if (blockIdx <= incrementalDirtyFrom && blockIdx > snapshotBlock) {
+                  snapshotBlock = blockIdx;
+                }
+              }
+              const snapshot =
+                snapshotBlock >= 0 ? cache.paginatorSnapshotAtBlock.get(snapshotBlock) : undefined;
+
+              if (snapshot && snapshotBlock > 0) {
+                console.debug(
+                  `[PagedEditor] Step 3 using RESUME from block ${snapshotBlock} (dirty: ${incrementalDirtyFrom})`
+                );
+                newLayout = layoutDocument(newBlocks, newMeasures, {
+                  ...layoutOpts,
+                  resumeFrom: {
+                    resumeFromBlock: snapshotBlock,
+                    paginatorSnapshot: snapshot,
+                    dirtyTo: Math.min(incrementalDirtyFrom + 10, newBlocks.length),
+                    prevStatesAtBlock:
+                      cache.statesAtBlock.length > 0 ? cache.statesAtBlock : undefined,
+                    prevPages: layout?.pages,
+                  },
+                });
+              } else {
+                newLayout = layoutDocument(newBlocks, newMeasures, layoutOpts);
+              }
+            } else {
+              newLayout = layoutDocument(newBlocks, newMeasures, layoutOpts);
+            }
           }
 
-          stepTime = perfEnabled ? performance.now() - stepStart : 0;
-          if (perfEnabled) {
-            layoutDocumentMs = stepTime;
-            if (stepTime > 500) {
-              console.warn(
-                `[PagedEditor] layoutDocument took ${Math.round(stepTime)}ms (${newLayout.pages.length} pages)`
-              );
-            }
+          stepTime = performance.now() - stepStart;
+          console.debug(
+            `[PagedEditor] Step 3 (layout) → ${stepTime.toFixed(1)}ms (${newLayout.pages.length} pages)`
+          );
+          if (stepTime > 500) {
+            console.warn(
+              `[PagedEditor] layoutDocument took ${Math.round(stepTime)}ms (${newLayout.pages.length} pages)`
+            );
           }
           setLayout(newLayout);
 
+          // No yield before paint — layout→paint must be atomic to avoid visual flash
+
           // Step 4: Paint to DOM
           if (pagesContainerRef.current && painterRef.current) {
-            stepStart = perfEnabled ? performance.now() : 0;
+            stepStart = performance.now();
 
             // Build block lookup
             const blockLookup: BlockLookup = new Map();
@@ -2086,12 +2279,10 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
               footnotesByPage?: Map<number, FootnoteRenderItem[]>;
             });
 
-            stepTime = perfEnabled ? performance.now() - stepStart : 0;
-            if (perfEnabled) {
-              renderPagesMs = stepTime;
-              if (stepTime > 500) {
-                console.warn(`[PagedEditor] renderPages took ${Math.round(stepTime)}ms`);
-              }
+            stepTime = performance.now() - stepStart;
+            console.debug(`[PagedEditor] Step 4 (paint) → ${stepTime.toFixed(1)}ms`);
+            if (stepTime > 500) {
+              console.warn(`[PagedEditor] renderPages took ${Math.round(stepTime)}ms`);
             }
 
             // Create and expose RenderedDomContext after DOM is painted
@@ -2114,33 +2305,37 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
             onAnchorPositionsChange(positions);
           }
 
-          if (perfEnabled) {
-            const totalTime = performance.now() - pipelineStart;
-            recordLayoutPerf({
-              ts: performance.now(),
-              totalMs: totalTime,
-              toFlowBlocksMs,
-              measureBlocksMs,
-              layoutDocumentMs,
-              renderPagesMs,
-              blocks: newBlocks.length,
-              pages: newLayout.pages.length,
-              docSize: state.doc.content.size,
-              layoutSeq: currentEpoch,
-            });
-            if (totalTime > 2000) {
-              console.warn(
-                `[PagedEditor] Layout pipeline took ${Math.round(totalTime)}ms total ` +
-                  `(${newBlocks.length} blocks, ${newMeasures.length} measures)`
-              );
-            }
+          // Save cache state for next incremental update (only after successful paint).
+          // Apply pending incremental result first (deferred from updateBlocks to avoid
+          // split-state corruption on stale abort).
+          if (pendingIncrementalResult) {
+            applyIncrementalResult(cache, pendingIncrementalResult);
+          }
+          saveBlockState(cache, state.doc, newBlocks, newMeasures);
+
+          // Save layout statesAtBlock for convergence detection in future resumed layouts
+          if (newLayout.statesAtBlock) {
+            cache.statesAtBlock = newLayout.statesAtBlock;
+          }
+
+          // Save paginator snapshots at page boundaries for future resume
+          if (newLayout.paginatorSnapshots) {
+            cache.paginatorSnapshotAtBlock = newLayout.paginatorSnapshots;
+          }
+
+          // Signal layout is complete — only after we actually painted
+          syncCoordinator.onLayoutComplete(currentEpoch);
+
+          const totalTime = performance.now() - pipelineStart;
+          if (totalTime > 2000) {
+            console.warn(
+              `[PagedEditor] Layout pipeline took ${Math.round(totalTime)}ms total ` +
+                `(${newBlocks.length} blocks, ${newMeasures.length} measures)`
+            );
           }
         } catch (error) {
           console.error('[PagedEditor] Layout pipeline error:', error);
         }
-
-        // Signal layout is complete for this sequence
-        syncCoordinator.onLayoutComplete(currentEpoch);
       },
       [
         contentWidth,
@@ -2174,6 +2369,7 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
     const pendingLayoutRef = useRef<{
       rafId: number;
       state: EditorState;
+      transaction?: Transaction;
     } | null>(null);
 
     /**
@@ -2182,20 +2378,21 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
      * the most recent document state gets laid out.
      */
     const scheduleLayout = useCallback(
-      (state: EditorState) => {
+      (state: EditorState, transaction?: Transaction) => {
         if (pendingLayoutRef.current) {
           // Already scheduled — just update the state to the latest
           pendingLayoutRef.current.state = state;
+          pendingLayoutRef.current.transaction = transaction;
           return;
         }
         const rafId = requestAnimationFrame(() => {
           const pending = pendingLayoutRef.current;
           pendingLayoutRef.current = null;
           if (pending) {
-            runLayoutPipeline(pending.state);
+            runLayoutPipeline(pending.state, pending.transaction);
           }
         });
-        pendingLayoutRef.current = { rafId, state };
+        pendingLayoutRef.current = { rafId, state, transaction };
       },
       [runLayoutPipeline]
     );
@@ -2577,7 +2774,7 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
           syncCoordinator.incrementStateSeq();
 
           // Content changed - schedule layout (coalesced via rAF)
-          scheduleLayout(newState);
+          scheduleLayout(newState, transaction);
 
           const now = performance.now();
           const last = lastDocChangeAtRef.current;
@@ -3654,18 +3851,7 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
               if (parent.isTextblock) {
                 const text = parent.textContent;
                 const offset = $pos.parentOffset;
-
-                // Find word start (go back until whitespace/punctuation)
-                let start = offset;
-                while (start > 0 && /\w/.test(text[start - 1])) {
-                  start--;
-                }
-
-                // Find word end (go forward until whitespace/punctuation)
-                let end = offset;
-                while (end < text.length && /\w/.test(text[end])) {
-                  end++;
-                }
+                const [start, end] = findWordBoundaries(text, offset);
 
                 // Convert to absolute positions
                 const absStart = $pos.start() + start;
@@ -3717,7 +3903,12 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
         // If the right-click is within the existing selection, keep it
         // Otherwise, move cursor to the right-click position
         if (pmPos !== null && (from === to || pmPos < from || pmPos > to)) {
-          hiddenPMRef.current?.setSelection(pmPos);
+          const cellPos = findCellPosFromPmPos(pmPos);
+          if (cellPos !== null) {
+            hiddenPMRef.current?.setSelection(cellPos + 1);
+          } else {
+            hiddenPMRef.current?.setSelection(pmPos);
+          }
           hiddenPMRef.current?.focus();
           setIsFocused(true);
         }

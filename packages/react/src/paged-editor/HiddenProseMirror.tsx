@@ -234,6 +234,14 @@ const HiddenProseMirrorComponent = forwardRef<HiddenProseMirrorRef, HiddenProseM
     // Keep document ref in sync
     documentRef.current = document;
 
+    // Generate a stable document identity from metadata.
+    // Used by both createView() and the document-change effect to track identity.
+    const getDocumentId = (doc: Document | null): string => {
+      if (!doc) return 'empty';
+      const meta = doc.package?.properties;
+      return `${meta?.created || ''}-${meta?.modified || ''}-${meta?.title || ''}`;
+    };
+
     // ========================================================================
     // EditorView Lifecycle
     // ========================================================================
@@ -264,8 +272,16 @@ const HiddenProseMirrorComponent = forwardRef<HiddenProseMirrorRef, HiddenProseM
       const editorProps: DirectEditorProps = {
         state: initialState,
         editable: () => !readOnly,
-        dispatchTransaction: (transaction: Transaction) => {
-          if (!viewRef.current || isDestroyingRef.current) return;
+        // Use a regular function (not arrow) so ProseMirror's `.call(this, tr)`
+        // binding gives us the EditorView. This is critical: plugins like ySyncPlugin
+        // dispatch transactions during EditorView construction (in their `view()`
+        // callback), before the constructor returns and viewRef.current is set.
+        dispatchTransaction(this: EditorView, transaction: Transaction) {
+          if (isDestroyingRef.current) return;
+
+          // Ensure viewRef is set — may be called during construction before
+          // the `new EditorView()` assignment on the next line completes.
+          if (!viewRef.current) viewRef.current = this;
 
           const perfEnabled =
             PERF_ENABLED &&
@@ -340,6 +356,11 @@ const HiddenProseMirrorComponent = forwardRef<HiddenProseMirrorRef, HiddenProseM
 
       viewRef.current = new EditorView(hostRef.current, editorProps);
 
+      // Mark as initialized so the document-change effect skips the redundant
+      // first-mount updateState (createView already set the initial state).
+      isInitializedRef.current = true;
+      lastDocumentIdRef.current = getDocumentId(document);
+
       // Notify that view is ready (use ref to avoid dependency issues)
       onEditorViewReadyRef.current?.(viewRef.current);
     }, [
@@ -378,17 +399,6 @@ const HiddenProseMirrorComponent = forwardRef<HiddenProseMirrorRef, HiddenProseM
     // being passed back through the parent component's state
     useEffect(() => {
       if (!viewRef.current || isDestroyingRef.current) return;
-
-      // Generate a simple document identity based on its structure
-      // This helps detect truly different documents vs the same doc passed back after editing
-      const getDocumentId = (doc: Document | null): string => {
-        if (!doc) return 'empty';
-        // Use the document's package id or a hash of its structure
-        // For simplicity, we compare based on whether it's a different document object
-        // and whether it has different metadata
-        const meta = doc.package?.properties;
-        return `${meta?.created || ''}-${meta?.modified || ''}-${meta?.title || ''}`;
-      };
 
       const currentDocId = getDocumentId(document);
 

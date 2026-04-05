@@ -72,6 +72,23 @@ function findAdjacentRevision(
 }
 
 /**
+ * Find an adjacent revision at either edge of a range.
+ * This keeps consecutive backspaces grouped even though the cursor moves left.
+ */
+function findAdjacentRevisionForRange(
+  doc: PMNode,
+  from: number,
+  to: number,
+  markTypeName: string,
+  author: string
+): MarkAttrs | null {
+  return (
+    findAdjacentRevision(doc, from, markTypeName, author) ??
+    findAdjacentRevision(doc, to, markTypeName, author)
+  );
+}
+
+/**
  * Walk a text range and either mark as deletion or retract own insertions.
  * Processes in reverse order to maintain position validity.
  */
@@ -100,7 +117,8 @@ function markRangeAsDeleted(
   if (ranges.length === 0) return;
 
   const delAttrs =
-    findAdjacentRevision(doc, from, 'deletion', pluginState.author) || makeMarkAttrs(pluginState);
+    findAdjacentRevisionForRange(doc, from, to, 'deletion', pluginState.author) ||
+    makeMarkAttrs(pluginState);
 
   for (let i = ranges.length - 1; i >= 0; i--) {
     const range = ranges[i];
@@ -141,6 +159,18 @@ function applySuggestionInsert(
 
   const insertAt = tr.mapping.map(to);
   tr.insertText(text, insertAt, insertAt);
+
+  // Strip inherited deletion marks — new text must never be marked as deleted.
+  const deletionType = view.state.schema.marks.deletion;
+  if (deletionType) {
+    tr.removeMark(insertAt, insertAt + text.length, deletionType);
+  }
+
+  // Apply the correct insertion mark. If the cursor was inside an existing
+  // insertion by the same author, insertText already inherited that mark and
+  // insertAttrs will match — addMark is effectively a no-op that preserves
+  // the continuous mark span. We intentionally do NOT removeMark(insertionType)
+  // first, because that fragments the mark span and creates a nested change.
   tr.addMark(insertAt, insertAt + text.length, insertionType.create(insertAttrs));
 
   view.dispatch(tr.scrollIntoView());
@@ -206,8 +236,13 @@ function handleSuggestionDelete(
   } else {
     // Mark as deletion instead of removing
     const delAttrs =
-      findAdjacentRevision(state.doc, deletePos, 'deletion', pluginState.author) ||
-      makeMarkAttrs(pluginState);
+      findAdjacentRevisionForRange(
+        state.doc,
+        deletePos,
+        deleteEnd,
+        'deletion',
+        pluginState.author
+      ) || makeMarkAttrs(pluginState);
     tr.addMark(deletePos, deleteEnd, deletionType.create(delAttrs));
     // Move cursor past the deletion mark
     const newPos = isBackward ? deletePos : deleteEnd;

@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 import type { SidebarItemRenderProps } from '../../plugin-api/types';
 import { submitButtonStyle, CANCEL_BUTTON_STYLE } from './cardUtils';
 import { MentionDropdown, type MentionProvider, type MentionUser } from './MentionDropdown';
+import { useTranslation } from '../../i18n';
 
 export interface AddCommentCardProps extends SidebarItemRenderProps {
   onSubmit?: (text: string, mentions?: MentionUser[]) => void;
@@ -19,6 +20,7 @@ export function AddCommentCard({
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentions, setMentions] = useState<MentionUser[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { t } = useTranslation();
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -115,7 +117,7 @@ export function AddCommentCard({
             setMentionQuery(null);
           }
         }}
-        placeholder="Add a comment... Use @ to mention"
+        placeholder={t('comments.addComment')}
         style={{
           width: '100%',
           border: '1px solid #1a73e8',
@@ -149,14 +151,14 @@ export function AddCommentCard({
           }}
           style={CANCEL_BUTTON_STYLE}
         >
-          Cancel
+          {t('common.cancel')}
         </button>
         <button
           onClick={handleSubmit}
           disabled={!text.trim()}
           style={submitButtonStyle(!!text.trim())}
         >
-          Comment
+          {t('common.comment')}
         </button>
       </div>
     </div>

@@ -5,7 +5,10 @@
  * Shows Cut, Copy, Paste, and other text editing options.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import { useTranslation } from '../i18n';
+import type { TranslationKey } from '../i18n';
+import defaultLocale from '../../i18n/en.json';
 
 // ============================================================================
 // TYPES
@@ -28,6 +31,8 @@ export type TextContextAction =
   | 'addColumnLeft'
   | 'addColumnRight'
   | 'deleteColumn'
+  | 'mergeCells'
+  | 'splitCell'
   | 'addComment';
 
 /**
@@ -109,21 +114,42 @@ export interface UseTextContextMenuReturn {
 // ============================================================================
 
 /**
- * Default menu items
+ * Default menu item definitions (use translation keys for label/shortcut)
  */
-const DEFAULT_MENU_ITEMS: TextContextMenuItem[] = [
-  { action: 'cut', label: 'Cut', shortcut: 'Ctrl+X' },
-  { action: 'copy', label: 'Copy', shortcut: 'Ctrl+C' },
-  { action: 'paste', label: 'Paste', shortcut: 'Ctrl+V' },
+interface DefaultMenuItemDef {
+  action: TextContextAction;
+  labelKey: TranslationKey;
+  shortcutKey?: TranslationKey;
+  dividerAfter?: boolean;
+}
+
+const DEFAULT_MENU_ITEM_DEFS: DefaultMenuItemDef[] = [
+  { action: 'cut', labelKey: 'contextMenu.cut', shortcutKey: 'contextMenu.cutShortcut' },
+  { action: 'copy', labelKey: 'contextMenu.copy', shortcutKey: 'contextMenu.copyShortcut' },
+  { action: 'paste', labelKey: 'contextMenu.paste', shortcutKey: 'contextMenu.pasteShortcut' },
   {
     action: 'pasteAsPlainText',
-    label: 'Paste as Plain Text',
-    shortcut: 'Ctrl+Shift+V',
+    labelKey: 'contextMenu.pastePlainText',
+    shortcutKey: 'contextMenu.pastePlainTextShortcut',
     dividerAfter: true,
   },
-  { action: 'delete', label: 'Delete', shortcut: 'Del', dividerAfter: true },
-  { action: 'selectAll', label: 'Select All', shortcut: 'Ctrl+A', dividerAfter: true },
-  { action: 'addComment', label: 'Comment', shortcut: 'Ctrl+Alt+M' },
+  {
+    action: 'delete',
+    labelKey: 'contextMenu.delete',
+    shortcutKey: 'contextMenu.deleteShortcut',
+    dividerAfter: true,
+  },
+  {
+    action: 'selectAll',
+    labelKey: 'contextMenu.selectAll',
+    shortcutKey: 'contextMenu.selectAllShortcut',
+    dividerAfter: true,
+  },
+  {
+    action: 'addComment',
+    labelKey: 'contextMenu.comment' as TranslationKey,
+    shortcutKey: 'contextMenu.commentShortcut' as TranslationKey,
+  },
 ];
 
 // ============================================================================
@@ -252,6 +278,23 @@ const DeleteColumnIcon = () => (
   </svg>
 );
 
+const MergeCellsIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="2" y="4" width="4" height="8" rx="0.5" stroke="currentColor" strokeWidth="1.2" />
+    <rect x="10" y="4" width="4" height="8" rx="0.5" stroke="currentColor" strokeWidth="1.2" />
+    <path d="M7 8h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <path d="M8 7l1 1-1 1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+  </svg>
+);
+
+const SplitCellIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="2" y="4" width="12" height="8" rx="0.5" stroke="currentColor" strokeWidth="1.2" />
+    <path d="M8 4v8" stroke="currentColor" strokeWidth="1.2" strokeDasharray="2 1" />
+    <path d="M6.5 8h-1M9.5 8h1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);
+
 const CommentIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path
@@ -291,6 +334,10 @@ function getActionIcon(action: TextContextAction): React.ReactNode {
       return <AddColumnRightIcon />;
     case 'deleteColumn':
       return <DeleteColumnIcon />;
+    case 'mergeCells':
+      return <MergeCellsIcon />;
+    case 'splitCell':
+      return <SplitCellIcon />;
     case 'addComment':
       return <CommentIcon />;
     default:
@@ -405,9 +452,22 @@ export const TextContextMenu: React.FC<TextContextMenuProps> = ({
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const { t } = useTranslation();
+
+  // Translate default menu items from definitions
+  const translatedDefaults: TextContextMenuItem[] = useMemo(
+    () =>
+      DEFAULT_MENU_ITEM_DEFS.map((def) => ({
+        action: def.action,
+        label: t(def.labelKey),
+        shortcut: def.shortcutKey ? t(def.shortcutKey) : undefined,
+        dividerAfter: def.dividerAfter,
+      })),
+    [t]
+  );
 
   // Build menu items with disabled states
-  const menuItems = (items || DEFAULT_MENU_ITEMS).map((item) => {
+  const menuItems = (items || translatedDefaults).map((item) => {
     const disabled = (() => {
       if (item.disabled !== undefined) return item.disabled;
       switch (item.action) {
@@ -552,7 +612,7 @@ export const TextContextMenu: React.FC<TextContextMenuProps> = ({
       className={`docx-text-context-menu ${className}`}
       style={getMenuStyle()}
       role="menu"
-      aria-label="Text editing menu"
+      aria-label={t('contextMenu.textMenuAriaLabel')}
     >
       {menuItems.map((item, index) => {
         // Find the index in navigable items for highlighting
@@ -734,6 +794,8 @@ export function getTextActionLabel(action: TextContextAction): string {
     addColumnLeft: 'Insert column left',
     addColumnRight: 'Insert column right',
     deleteColumn: 'Delete column',
+    mergeCells: defaultLocale.table.mergeCells,
+    splitCell: defaultLocale.table.splitCell,
     addComment: 'Comment',
   };
   return labels[action];
@@ -757,16 +819,23 @@ export function getTextActionShortcut(action: TextContextAction): string {
     addColumnLeft: '',
     addColumnRight: '',
     deleteColumn: '',
+    mergeCells: '',
+    splitCell: '',
     addComment: '',
   };
   return shortcuts[action];
 }
 
 /**
- * Get default menu items
+ * Get default menu item definitions (untranslated, use translation keys)
  */
 export function getDefaultTextContextMenuItems(): TextContextMenuItem[] {
-  return [...DEFAULT_MENU_ITEMS];
+  return DEFAULT_MENU_ITEM_DEFS.map((def) => ({
+    action: def.action,
+    label: def.labelKey,
+    shortcut: def.shortcutKey,
+    dividerAfter: def.dividerAfter,
+  }));
 }
 
 /**

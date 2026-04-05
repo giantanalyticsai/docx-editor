@@ -2,11 +2,12 @@ import type { Comment } from '@giantanalyticsai/docx-core/types/content';
 import { MaterialSymbol } from '../ui/Icons';
 import type { SidebarItemRenderProps } from '../../plugin-api/types';
 import type { TrackedChangeEntry } from './cardUtils';
-import { formatDate, getInitials, avatarStyle, ICON_BUTTON_STYLE } from './cardUtils';
+import { formatDate, getInitials, avatarStyle, ICON_BUTTON_STYLE, truncateText } from './cardUtils';
 import { ReplyThread } from './ReplyThread';
 import { ReplyInput } from './ReplyInput';
 import { CARD_STYLE_COLLAPSED, CARD_STYLE_EXPANDED } from './cardStyles';
 import type { MentionProvider } from './MentionDropdown';
+import { useTranslation } from '../../i18n';
 
 export interface TrackedChangeCardProps extends SidebarItemRenderProps {
   change: TrackedChangeEntry;
@@ -28,7 +29,8 @@ export function TrackedChangeCard({
   onReply,
   mentionProvider,
 }: TrackedChangeCardProps) {
-  const authorName = change.author || 'Unknown';
+  const { t } = useTranslation();
+  const authorName = change.author || t('trackedChanges.unknown');
 
   return (
     <div
@@ -53,7 +55,7 @@ export function TrackedChangeCard({
                 e.stopPropagation();
                 onAccept?.(change.from, change.to);
               }}
-              title="Accept"
+              title={t('common.accept')}
               style={ICON_BUTTON_STYLE}
             >
               <MaterialSymbol name="check" size={20} />
@@ -63,7 +65,7 @@ export function TrackedChangeCard({
                 e.stopPropagation();
                 onReject?.(change.from, change.to);
               }}
-              title="Reject"
+              title={t('common.reject')}
               style={ICON_BUTTON_STYLE}
             >
               <MaterialSymbol name="close" size={20} />
@@ -73,12 +75,30 @@ export function TrackedChangeCard({
       </div>
 
       <div style={{ fontSize: 13, lineHeight: '20px', color: '#202124', marginTop: 6 }}>
-        {change.type === 'insertion' ? 'Added' : 'Deleted'}{' '}
-        <span
-          style={{ color: change.type === 'insertion' ? '#137333' : '#c5221f', fontWeight: 500 }}
-        >
-          &quot;{change.text.length > 50 ? change.text.slice(0, 50) + '...' : change.text}&quot;
-        </span>
+        {change.type === 'replacement' ? (
+          <>
+            {t('trackedChanges.replaced')}{' '}
+            <span style={{ color: '#c5221f', fontWeight: 500 }}>
+              &quot;{truncateText(change.deletedText || '')}&quot;
+            </span>{' '}
+            {t('trackedChanges.with')}{' '}
+            <span style={{ color: '#137333', fontWeight: 500 }}>
+              &quot;{truncateText(change.text)}&quot;
+            </span>
+          </>
+        ) : (
+          <>
+            {change.type === 'insertion' ? t('trackedChanges.added') : t('trackedChanges.deleted')}{' '}
+            <span
+              style={{
+                color: change.type === 'insertion' ? '#137333' : '#c5221f',
+                fontWeight: 500,
+              }}
+            >
+              &quot;{truncateText(change.text)}&quot;
+            </span>
+          </>
+        )}
       </div>
 
       <ReplyThread replies={replies} isExpanded={isExpanded} />

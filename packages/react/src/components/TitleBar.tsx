@@ -16,6 +16,7 @@ import { TableGridInline } from './ui/TableGridInline';
 import { ToolbarTabs } from './ToolbarTabs';
 import { useEditorToolbar } from './EditorToolbarContext';
 import type { FormattingAction } from './Toolbar';
+import { useTranslation } from '../i18n';
 
 // ============================================================================
 // Default Doc Icon (shown when no Logo is provided)
@@ -63,18 +64,15 @@ function stripExtension(name: string): string {
   return name.replace(/\.docx$/i, '');
 }
 
-export function DocumentName({
-  value,
-  onChange,
-  placeholder = 'Untitled',
-  editable = true,
-}: DocumentNameProps) {
-  const displayName = stripExtension(value);
+export function DocumentName({ value, onChange, placeholder, editable = true }: DocumentNameProps) {
+  const { t } = useTranslation();
+  const resolvedPlaceholder = placeholder ?? t('titleBar.untitled');
+  const displayName = stripExtension(value) ?? '';
 
   if (!editable) {
     return (
       <span className="text-base font-normal text-slate-800 px-2 py-0 min-w-[100px] max-w-[300px] truncate leading-tight">
-        {displayName || placeholder}
+        {displayName || resolvedPlaceholder}
       </span>
     );
   }
@@ -86,9 +84,9 @@ export function DocumentName({
         const raw = e.target.value;
         onChange?.(raw.endsWith('.docx') ? raw : raw + '.docx');
       }}
-      placeholder={placeholder}
+      placeholder={resolvedPlaceholder}
       className="text-base font-normal text-slate-800 bg-transparent border-0 outline-none px-2 py-0 rounded hover:bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-300 min-w-[100px] max-w-[300px] truncate leading-tight"
-      aria-label="Document name"
+      aria-label={t('titleBar.documentNameAriaLabel')}
     />
   );
 }
@@ -110,6 +108,7 @@ export function TitleBarRight({ children }: TitleBarRightProps) {
 // ============================================================================
 
 export function MenuBar() {
+  const { t } = useTranslation();
   const ctx = useEditorToolbar();
   const {
     disabled = false,
@@ -147,25 +146,31 @@ export function MenuBar() {
   const hasFileMenu = (showPrintButton && onPrint) || onPageSetup;
 
   return (
-    <div className="flex items-center" role="menubar" aria-label="Menu bar">
+    <div className="flex items-center" role="menubar" aria-label={t('titleBar.menuBarAriaLabel')}>
       {/* File Menu */}
       {hasFileMenu && (
         <MenuDropdown
-          label="File"
+          label={t('toolbar.file')}
           disabled={disabled}
           items={[
             ...(showPrintButton && onPrint
               ? [
                   {
                     icon: 'print',
-                    label: 'Print',
-                    shortcut: 'Ctrl+P',
+                    label: t('toolbar.print'),
+                    shortcut: t('toolbar.printShortcut'),
                     onClick: onPrint,
                   } as MenuEntry,
                 ]
               : []),
             ...(onPageSetup
-              ? [{ icon: 'settings', label: 'Page setup', onClick: onPageSetup } as MenuEntry]
+              ? [
+                  {
+                    icon: 'settings',
+                    label: t('toolbar.pageSetup'),
+                    onClick: onPageSetup,
+                  } as MenuEntry,
+                ]
               : []),
           ]}
         />
@@ -173,17 +178,17 @@ export function MenuBar() {
 
       {/* Format Menu */}
       <MenuDropdown
-        label="Format"
+        label={t('toolbar.format')}
         disabled={disabled}
         items={[
           {
             icon: 'format_textdirection_l_to_r',
-            label: 'Left-to-right text',
+            label: t('toolbar.leftToRight'),
             onClick: () => handleFormat('setLtr'),
           } as MenuEntry,
           {
             icon: 'format_textdirection_r_to_l',
-            label: 'Right-to-left text',
+            label: t('toolbar.rightToLeft'),
             onClick: () => handleFormat('setRtl'),
           } as MenuEntry,
         ]}
@@ -191,17 +196,17 @@ export function MenuBar() {
 
       {/* Insert Menu */}
       <MenuDropdown
-        label="Insert"
+        label={t('toolbar.insert')}
         disabled={disabled}
         items={[
           ...(onInsertImage
-            ? [{ icon: 'image', label: 'Image', onClick: onInsertImage } as MenuEntry]
+            ? [{ icon: 'image', label: t('toolbar.image'), onClick: onInsertImage } as MenuEntry]
             : []),
           ...(showTableInsert && onInsertTable
             ? [
                 {
                   icon: 'grid_on',
-                  label: 'Table',
+                  label: t('toolbar.table'),
                   submenuContent: (closeMenu: () => void) => (
                     <TableGridInline
                       onInsert={(rows: number, cols: number) => {
@@ -218,13 +223,13 @@ export function MenuBar() {
             : []),
           {
             icon: 'page_break',
-            label: 'Page break',
+            label: t('toolbar.pageBreak'),
             onClick: onInsertPageBreak,
             disabled: !onInsertPageBreak,
           },
           {
             icon: 'format_list_numbered',
-            label: 'Table of contents',
+            label: t('toolbar.tableOfContents'),
             onClick: onInsertTOC,
             disabled: !onInsertTOC,
           },

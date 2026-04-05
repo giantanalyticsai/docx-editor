@@ -18,6 +18,18 @@
 
 - [`ca528e9`](https://github.com/eigenpal/docx-editor/commit/ca528e96b7a2ae2f74021775800839dc99c7d313) Thanks [@yash-giantanalytics](https://github.com/yash-giantanalytics)! - Add review toolbar, comment UI, template onTagSelect callback, find-replace with track changes, @mention in comments, default heading styles, and real-time collaborative editing package (Yjs + Hocuspocus)
 
+## 0.0.33
+
+### Patch Changes
+
+- Add i18n
+
+## 0.0.32
+
+### Patch Changes
+
+- Fixes with comments and tracked changes
+
 ## 0.0.31
 
 ### Patch Changes

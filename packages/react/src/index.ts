@@ -208,12 +208,15 @@ export {
   type TableContext,
   type TableSelection,
   type TableAction,
+  type TableSplitConfig,
   createTableContext,
   addRow,
   deleteRow,
   addColumn,
   deleteColumn,
   mergeCells,
+  getTableSplitCellDialogConfig,
+  splitTableCell,
   splitCell,
   getColumnCount,
   getCellAt,
@@ -397,6 +400,20 @@ export {
   getAllCategories,
   formatShortcutKeys,
 } from './components/dialogs/KeyboardShortcutsDialog';
+
+// ============================================================================
+// I18N
+// ============================================================================
+
+export {
+  LocaleProvider,
+  useTranslation,
+  type LocaleProviderProps,
+  type LocaleStrings,
+  type Translations,
+  type PartialLocaleStrings,
+  type TranslationKey,
+} from './i18n';
 
 // ============================================================================
 // TYPES

@@ -847,11 +847,10 @@ export class EditorPage {
       white: 'FFFFFF',
     };
     const hex = highlightHexMap[color] || color.replace(/^#/, '').toUpperCase();
-    await this.pickColorFromDropdown(
-      'Text Highlight Color',
-      hex,
-      ['toolbar-highlightColor-arrow', 'ribbon-highlightColor-arrow']
-    );
+    await this.pickColorFromDropdown('Text Highlight Color', hex, [
+      'toolbar-highlightColor-arrow',
+      'ribbon-highlightColor-arrow',
+    ]);
   }
 
   /**
@@ -1181,30 +1180,27 @@ export class EditorPage {
    * Insert a table with specified dimensions using the grid selector
    */
   async insertTable(rows: number, cols: number): Promise<void> {
-    const toolbarPicker = this.page.locator('[data-testid="toolbar-insert-table"]');
-    let gridColumns = 5;
+    const inlinePicker = this.page.locator('[data-testid="toolbar-insert-table"]');
 
-    if (await toolbarPicker.isVisible()) {
-      // Toolbar button (table grid picker)
-      await toolbarPicker.click();
+    if (await inlinePicker.isVisible().catch(() => false)) {
+      await inlinePicker.click();
     } else {
-      // Compact toolbar: Insert menu with table grid submenu
-      await this.toolbar.getByRole('button', { name: 'Insert', exact: true }).click();
-      await this.page.getByRole('menuitem', { name: /^Table$/ }).hover();
-      gridColumns = 6;
+      await this.page.getByRole('button', { name: /^Insert$/ }).click();
+      const tableMenuItem = this.page.getByRole('button', { name: /^Table$/ }).first();
+      await tableMenuItem.hover();
     }
 
-    // Wait for grid to appear (TableGridInline)
     const grid = this.page.getByRole('grid', { name: 'Table size selector' });
     await grid.waitFor({ state: 'visible', timeout: 5000 });
 
-    // Calculate grid cell index (row-major order, 1-based)
-    const cellIndex = (rows - 1) * gridColumns + cols;
-    const targetCell = grid.getByRole('gridcell').nth(cellIndex - 1);
+    const gridCells = grid.getByRole('gridcell');
+    const totalCells = await gridCells.count();
+    const gridColumns = Math.max(1, Math.round(Math.sqrt(totalCells)));
+    const cellIndex = (rows - 1) * gridColumns + (cols - 1);
+    const targetCell = gridCells.nth(cellIndex);
 
-    // Hover over the cell to set the hover state
     await targetCell.hover();
-    await this.page.waitForTimeout(50);
+    await this.page.waitForTimeout(100);
     await targetCell.click();
 
     // Wait for table to be inserted (use generic table selector since prosemirror-tables
@@ -1246,6 +1242,17 @@ export class EditorPage {
     const pmCell = pmTable.locator('tr').nth(row).locator('td, th').nth(col);
     await pmCell.scrollIntoViewIfNeeded();
     await pmCell.click();
+  }
+
+  /**
+   * Right-click on a specific visual table cell to open the text context menu
+   */
+  async rightClickTableCell(tableIndex: number, row: number, col: number): Promise<void> {
+    const table = this.page.locator('.paged-editor__pages .layout-table').nth(tableIndex);
+    const cell = table.locator('.layout-table-row').nth(row).locator('.layout-table-cell').nth(col);
+    await cell.scrollIntoViewIfNeeded();
+    await cell.click({ button: 'right' });
+    await this.page.waitForSelector('[role="menu"]', { state: 'visible', timeout: 5000 });
   }
 
   /**

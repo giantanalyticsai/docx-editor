@@ -15,6 +15,7 @@ import React from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import type { Table, TableCell, TableRow } from '@giantanalyticsai/docx-core/types/document';
 import { MaterialSymbol } from './MaterialSymbol';
+import { useTranslation } from '../../i18n';
 
 // ============================================================================
 // TYPES
@@ -124,6 +125,13 @@ export interface TableContext {
   rowCount: number;
   /** Total number of columns */
   columnCount: number;
+}
+
+export interface TableSplitConfig {
+  minRows: number;
+  minCols: number;
+  initialRows: number;
+  initialCols: number;
 }
 
 /**
@@ -372,6 +380,8 @@ export function TableToolbar({
   position = 'top',
   children,
 }: TableToolbarProps): React.ReactElement | null {
+  const { t } = useTranslation();
+
   // Don't render if not in a table
   if (!context) {
     return null;
@@ -412,15 +422,15 @@ export function TableToolbar({
       className={classNames.join(' ')}
       style={containerStyle}
       role="toolbar"
-      aria-label="Table editing tools"
+      aria-label={t('table.editingTools')}
     >
-      <span style={TOOLBAR_STYLES.label}>Table:</span>
+      <span style={TOOLBAR_STYLES.label}>{t('table.label')}</span>
 
       {/* Row operations */}
       <ToolbarGroup>
         <TableToolbarButton
           action="addRowAbove"
-          label="Insert Row Above"
+          label={t('table.insertRowAbove')}
           icon={<AddRowAboveIcon />}
           disabled={disabled}
           onClick={() => handleAction('addRowAbove')}
@@ -429,7 +439,7 @@ export function TableToolbar({
         />
         <TableToolbarButton
           action="addRowBelow"
-          label="Insert Row Below"
+          label={t('table.insertRowBelow')}
           icon={<AddRowBelowIcon />}
           disabled={disabled}
           onClick={() => handleAction('addRowBelow')}
@@ -438,7 +448,7 @@ export function TableToolbar({
         />
         <TableToolbarButton
           action="deleteRow"
-          label="Delete Row"
+          label={t('table.deleteRow')}
           icon={<DeleteRowIcon />}
           disabled={disabled || !canDeleteRow}
           onClick={() => handleAction('deleteRow')}
@@ -451,7 +461,7 @@ export function TableToolbar({
       <ToolbarGroup>
         <TableToolbarButton
           action="addColumnLeft"
-          label="Insert Column Left"
+          label={t('table.insertColumnLeft')}
           icon={<AddColumnLeftIcon />}
           disabled={disabled}
           onClick={() => handleAction('addColumnLeft')}
@@ -460,7 +470,7 @@ export function TableToolbar({
         />
         <TableToolbarButton
           action="addColumnRight"
-          label="Insert Column Right"
+          label={t('table.insertColumnRight')}
           icon={<AddColumnRightIcon />}
           disabled={disabled}
           onClick={() => handleAction('addColumnRight')}
@@ -469,7 +479,7 @@ export function TableToolbar({
         />
         <TableToolbarButton
           action="deleteColumn"
-          label="Delete Column"
+          label={t('table.deleteColumn')}
           icon={<DeleteColumnIcon />}
           disabled={disabled || !canDeleteColumn}
           onClick={() => handleAction('deleteColumn')}
@@ -482,7 +492,7 @@ export function TableToolbar({
       <ToolbarGroup showSeparator={false}>
         <TableToolbarButton
           action="mergeCells"
-          label="Merge Cells"
+          label={t('table.mergeCells')}
           icon={<MergeCellsIcon />}
           disabled={disabled || !canMerge}
           onClick={() => handleAction('mergeCells')}
@@ -491,7 +501,7 @@ export function TableToolbar({
         />
         <TableToolbarButton
           action="splitCell"
-          label="Split Cell"
+          label={t('table.splitCell')}
           icon={<SplitCellIcon />}
           disabled={disabled || !canSplit}
           onClick={() => handleAction('splitCell')}
@@ -500,7 +510,7 @@ export function TableToolbar({
         />
         <TableToolbarButton
           action="deleteTable"
-          label="Delete Table"
+          label={t('table.deleteTable')}
           icon={<DeleteTableIcon />}
           disabled={disabled}
           onClick={() => handleAction('deleteTable')}
@@ -533,12 +543,10 @@ export function createTableContext(table: Table, selection: TableSelection): Tab
       selection.selectedCells.startCol !== selection.selectedCells.endCol)
   );
 
-  // Check if current cell can be split (has gridSpan > 1 or vMerge)
   const currentCell = getCellAt(table, selection.rowIndex, selection.columnIndex);
-  const canSplitCell = !!(
-    currentCell &&
-    ((currentCell.formatting?.gridSpan ?? 1) > 1 || currentCell.formatting?.vMerge === 'restart')
-  );
+  // Split is available for a single active cell. The UI opens a dialog and
+  // applies the requested row/column split explicitly.
+  const canSplitCell = !!currentCell && !hasMultiCellSelection;
 
   return {
     table,
@@ -698,6 +706,278 @@ export function createEmptyCell(): TableCell {
       },
     ],
     formatting: {},
+  };
+}
+
+interface DocumentTableAnchor {
+  cell: TableCell;
+  row: number;
+  col: number;
+  rowspan: number;
+  colspan: number;
+}
+
+function getRowCellStartingAt(row: TableRow, targetCol: number): TableCell | null {
+  let currentCol = 0;
+  for (const cell of row.cells) {
+    const colspan = cell.formatting?.gridSpan ?? 1;
+    if (currentCol === targetCol) {
+      return cell;
+    }
+    currentCol += colspan;
+  }
+  return null;
+}
+
+function collectDocumentTableAnchors(table: Table): {
+  anchors: DocumentTableAnchor[];
+  totalCols: number;
+} {
+  const anchors: DocumentTableAnchor[] = [];
+  let totalCols = 0;
+
+  for (let rowIndex = 0; rowIndex < table.rows.length; rowIndex++) {
+    const row = table.rows[rowIndex];
+    let colIndex = 0;
+
+    for (const cell of row.cells) {
+      const colspan = cell.formatting?.gridSpan ?? 1;
+      if (cell.formatting?.vMerge !== 'continue') {
+        let rowspan = 1;
+        if (cell.formatting?.vMerge === 'restart') {
+          for (let nextRow = rowIndex + 1; nextRow < table.rows.length; nextRow++) {
+            const continuation = getRowCellStartingAt(table.rows[nextRow], colIndex);
+            if (!continuation || continuation.formatting?.vMerge !== 'continue') break;
+            rowspan += 1;
+          }
+        }
+
+        anchors.push({
+          cell,
+          row: rowIndex,
+          col: colIndex,
+          rowspan,
+          colspan,
+        });
+      }
+
+      colIndex += colspan;
+      totalCols = Math.max(totalCols, colIndex);
+    }
+  }
+
+  return { anchors, totalCols };
+}
+
+function findDocumentTableAnchor(
+  table: Table,
+  rowIndex: number,
+  columnIndex: number
+): DocumentTableAnchor | null {
+  const { anchors } = collectDocumentTableAnchors(table);
+  return (
+    anchors.find(
+      (anchor) =>
+        rowIndex >= anchor.row &&
+        rowIndex < anchor.row + anchor.rowspan &&
+        columnIndex >= anchor.col &&
+        columnIndex < anchor.col + anchor.colspan
+    ) ?? null
+  );
+}
+
+function splitTableColumnWidths(
+  table: Table,
+  totalCols: number,
+  startCol: number,
+  currentSpan: number,
+  targetSpan: number
+): number[] | undefined {
+  const existing =
+    table.columnWidths && table.columnWidths.length > 0
+      ? [...table.columnWidths]
+      : Array.from({ length: totalCols }, () => 1440);
+
+  const sliceWidth = existing
+    .slice(startCol, startCol + currentSpan)
+    .reduce((sum, width) => sum + width, 0);
+  const baseWidth = Math.floor(sliceWidth / Math.max(targetSpan, 1));
+  const remainder = sliceWidth - baseWidth * targetSpan;
+  const replacement = Array.from(
+    { length: targetSpan },
+    (_, index) => baseWidth + (index < remainder ? 1 : 0)
+  );
+
+  return [
+    ...existing.slice(0, startCol),
+    ...replacement,
+    ...existing.slice(startCol + currentSpan),
+  ];
+}
+
+function toAnchorCellFormatting(cell: TableCell, colspan: number, rowspan: number) {
+  const formatting = { ...(cell.formatting ?? {}) };
+  if (colspan > 1) formatting.gridSpan = colspan;
+  else delete formatting.gridSpan;
+  if (rowspan > 1) formatting.vMerge = 'restart';
+  else delete formatting.vMerge;
+  return Object.keys(formatting).length ? formatting : undefined;
+}
+
+function toContinuationFormatting(cell: TableCell, colspan: number) {
+  const formatting = { ...(cell.formatting ?? {}) };
+  if (colspan > 1) formatting.gridSpan = colspan;
+  else delete formatting.gridSpan;
+  formatting.vMerge = 'continue';
+  return formatting;
+}
+
+function createEmptySplitCell(template: TableCell): TableCell {
+  return {
+    type: 'tableCell',
+    content: [{ type: 'paragraph', content: [], formatting: {} }],
+    formatting: toAnchorCellFormatting(template, 1, 1),
+  };
+}
+
+export function getTableSplitCellDialogConfig(
+  table: Table,
+  rowIndex: number,
+  columnIndex: number
+): TableSplitConfig | null {
+  const anchor = findDocumentTableAnchor(table, rowIndex, columnIndex);
+  if (!anchor) return null;
+
+  return {
+    minRows: anchor.rowspan,
+    minCols: anchor.colspan,
+    initialRows: anchor.rowspan,
+    initialCols: anchor.rowspan > 1 || anchor.colspan > 1 ? anchor.colspan : anchor.colspan + 1,
+  };
+}
+
+export function splitTableCell(
+  table: Table,
+  rowIndex: number,
+  columnIndex: number,
+  rows: number,
+  cols: number
+): Table {
+  const { anchors, totalCols } = collectDocumentTableAnchors(table);
+  const target = anchors.find(
+    (anchor) =>
+      rowIndex >= anchor.row &&
+      rowIndex < anchor.row + anchor.rowspan &&
+      columnIndex >= anchor.col &&
+      columnIndex < anchor.col + anchor.colspan
+  );
+  if (!target) return table;
+  if (rows < target.rowspan || cols < target.colspan) return table;
+  if (rows === 1 && cols === 1) return table;
+
+  const deltaRows = rows - target.rowspan;
+  const deltaCols = cols - target.colspan;
+  const targetRowEnd = target.row + target.rowspan;
+  const targetColEnd = target.col + target.colspan;
+  const nextAnchors: DocumentTableAnchor[] = [];
+
+  for (const anchor of anchors) {
+    if (anchor === target) continue;
+
+    const rowEnd = anchor.row + anchor.rowspan;
+    const colEnd = anchor.col + anchor.colspan;
+    const rowIntersectsBand = anchor.row < targetRowEnd && rowEnd > target.row;
+    const colIntersectsBand = anchor.col < targetColEnd && colEnd > target.col;
+
+    nextAnchors.push({
+      cell: anchor.cell,
+      row: anchor.row >= targetRowEnd ? anchor.row + deltaRows : anchor.row,
+      col: anchor.col >= targetColEnd ? anchor.col + deltaCols : anchor.col,
+      rowspan:
+        anchor.rowspan + (deltaRows > 0 && rowIntersectsBand && !colIntersectsBand ? deltaRows : 0),
+      colspan:
+        anchor.colspan + (deltaCols > 0 && colIntersectsBand && !rowIntersectsBand ? deltaCols : 0),
+    });
+  }
+
+  for (let rowOffset = 0; rowOffset < rows; rowOffset++) {
+    for (let colOffset = 0; colOffset < cols; colOffset++) {
+      nextAnchors.push({
+        cell:
+          rowOffset === 0 && colOffset === 0
+            ? {
+                ...target.cell,
+                formatting: toAnchorCellFormatting(target.cell, 1, 1),
+              }
+            : createEmptySplitCell(target.cell),
+        row: target.row + rowOffset,
+        col: target.col + colOffset,
+        rowspan: 1,
+        colspan: 1,
+      });
+    }
+  }
+
+  const anchorByStart = new Map<string, DocumentTableAnchor>();
+  const anchorByCoveredSlot = new Map<string, DocumentTableAnchor>();
+  for (const anchor of nextAnchors) {
+    anchorByStart.set(`${anchor.row}-${anchor.col}`, anchor);
+    for (let row = anchor.row; row < anchor.row + anchor.rowspan; row++) {
+      for (let col = anchor.col; col < anchor.col + anchor.colspan; col++) {
+        anchorByCoveredSlot.set(`${row}-${col}`, anchor);
+      }
+    }
+  }
+
+  const newRowCount = table.rows.length + deltaRows;
+  const newColCount = totalCols + deltaCols;
+  const newRows: TableRow[] = [];
+
+  for (let row = 0; row < newRowCount; row++) {
+    const sourceRow =
+      row < targetRowEnd
+        ? table.rows[row]
+        : row < target.row + rows
+          ? table.rows[targetRowEnd - 1]
+          : table.rows[row - deltaRows];
+
+    const cells: TableCell[] = [];
+    for (let col = 0; col < newColCount; ) {
+      const anchor = anchorByStart.get(`${row}-${col}`);
+      if (anchor) {
+        cells.push({
+          ...anchor.cell,
+          formatting: toAnchorCellFormatting(anchor.cell, anchor.colspan, anchor.rowspan),
+        });
+        col += anchor.colspan;
+        continue;
+      }
+
+      const coveringAnchor = anchorByCoveredSlot.get(`${row}-${col}`);
+      if (!coveringAnchor) {
+        col += 1;
+        continue;
+      }
+
+      cells.push({
+        ...coveringAnchor.cell,
+        content: [],
+        formatting: toContinuationFormatting(coveringAnchor.cell, coveringAnchor.colspan),
+      });
+      col += coveringAnchor.colspan;
+    }
+
+    newRows.push({
+      type: 'tableRow',
+      formatting: sourceRow?.formatting ? { ...sourceRow.formatting } : undefined,
+      cells,
+    });
+  }
+
+  return {
+    ...table,
+    rows: newRows,
+    columnWidths: splitTableColumnWidths(table, totalCols, target.col, target.colspan, cols),
   };
 }
 
@@ -915,7 +1195,11 @@ export function mergeCells(table: Table, selection: TableSelection): Table {
 }
 
 /**
- * Split a merged cell
+ * Backward-compatible helper for callers that still use the older merged-cell
+ * split behavior directly.
+ *
+ * User-facing Split cell is now dialog-driven. For document-model tables, use
+ * `getTableSplitCellDialogConfig()` and `splitTableCell()` instead.
  */
 export function splitCell(table: Table, rowIndex: number, columnIndex: number): Table {
   const cell = getCellAt(table, rowIndex, columnIndex);
