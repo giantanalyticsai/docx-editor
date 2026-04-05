@@ -91,6 +91,7 @@ import {
   type SelectionRect,
   type CaretPosition,
 } from '@giantanalyticsai/docx-core/layout-bridge/selectionRects';
+import { findWordBoundaries } from '@giantanalyticsai/docx-core/utils/textSelection';
 
 // Layout painter
 import { LayoutPainter, type BlockLookup } from '@giantanalyticsai/docx-core/layout-painter';
@@ -3654,18 +3655,7 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
               if (parent.isTextblock) {
                 const text = parent.textContent;
                 const offset = $pos.parentOffset;
-
-                // Find word start (go back until whitespace/punctuation)
-                let start = offset;
-                while (start > 0 && /\w/.test(text[start - 1])) {
-                  start--;
-                }
-
-                // Find word end (go forward until whitespace/punctuation)
-                let end = offset;
-                while (end < text.length && /\w/.test(text[end])) {
-                  end++;
-                }
+                const [start, end] = findWordBoundaries(text, offset);
 
                 // Convert to absolute positions
                 const absStart = $pos.start() + start;

@@ -6,6 +6,18 @@
 
 ## 0.1.0
 
+## 0.0.33
+
+### Patch Changes
+
+- Add i18n
+
+## 0.0.32
+
+### Patch Changes
+
+- Fixes with comments and tracked changes
+
 ## 0.0.31
 
 ### Patch Changes

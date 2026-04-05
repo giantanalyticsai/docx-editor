@@ -1,76 +1,101 @@
-# Eigenpal DOCX Editor
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Context
 
-Bun + React (TSX) WYSIWYG editor for DOCX files:
+Monorepo for a browser-based WYSIWYG DOCX editor. Bun + React (TSX), ProseMirror-based.
 
 1. **Display DOCX** — render with full WYSIWYG fidelity per ECMA-376 spec
-2. **Insert docxtemplater variables** — `{variable}` mappings with live preview
+2. **Edit DOCX** — track changes, comments, formatting, tables, images, hyperlinks
+3. **Insert docxtemplater variables** — `{variable}` mappings with live preview
 
-Two entry points: `src/index.ts` (full UI), `src/headless.ts` (Node.js API).
 Client-side only. No backend.
+
+### Monorepo Structure
+
+| Package                                | Path                 | Description                                                                             |
+| -------------------------------------- | -------------------- | --------------------------------------------------------------------------------------- |
+| `@giantanalyticsai/docx-core`          | `packages/core`      | Framework-agnostic core: DOCX parsing, ProseMirror schema, layout engine, serialization |
+| `@giantanalyticsai/docx-js-editor`     | `packages/react`     | React UI: toolbar, ribbon, paged editor, plugins, components                            |
+| `@giantanalyticsai/docx-collab`        | `packages/collab`    | Collaboration support                                                                   |
+| `@giantanalyticsai/docx-editor-agents` | `packages/agent-use` | Agent/MCP integration                                                                   |
+| Vue scaffold                           | `packages/vue`       | Vue.js — contributions welcome                                                          |
+
+Core entry points: `packages/core/src/core.ts` (main), `packages/core/src/headless.ts` (Node.js API).
 
 ---
 
-## Verify Commands
+## Commands
 
 ```bash
-# Fast cycle (use this 95% of the time)
+# Install
+bun install
+
+# Dev server (localhost:5173)
+bun run dev
+
+# Build (must build core first, then react, then collab — order matters)
+bun run build
+
+# Typecheck all packages
+bun run typecheck
+
+# Lint / format
+bun run lint
+bun run lint:fix
+bun run format
+bun run format:check
+
+# Unit tests
+bun test
+bun test --watch
+
+# E2E tests — targeted (preferred)
+npx playwright test e2e/tests/formatting.spec.ts --timeout=30000
+npx playwright test --grep "apply bold" --timeout=30000 --workers=4
+
+# E2E tests — full suite (500+ tests, only for final validation)
+npx playwright test --timeout=60000 --workers=4
+
+# Fast verify cycle (use this 95% of the time)
 bun run typecheck && npx playwright test --grep "<pattern>" --timeout=30000 --workers=4
-
-# Single test file
-bun run typecheck && npx playwright test tests/formatting.spec.ts --timeout=30000
-
-# Only affected test files (use this after targeted changes)
-bun run typecheck && npx playwright test tests/formatting.spec.ts tests/demo-docx.spec.ts --timeout=30000 --workers=4
-
-# Full suite (only for final validation — NEVER run casually, 500+ tests)
-bun run typecheck && npx playwright test --timeout=60000 --workers=4
 ```
+
+### E2E Test Notes
+
+- Tests live in `e2e/tests/` (NOT `tests/`). Fixtures in `e2e/fixtures/`, helpers in `e2e/helpers/`.
+- Playwright config: `playwright.config.ts` — auto-starts dev server, Chromium only.
+- **Never run all 500+ tests at once** unless explicitly validating final results.
+- Use `--timeout=30000` and `--workers=4` for local runs.
+- **Known flaky tests:** `formatting.spec.ts` (bold toggle/undo/redo), `text-editing.spec.ts` (clipboard ops).
 
 ### Test File Mapping
 
-| Feature Area          | Test File                      | Quick Verify Pattern    |
-| --------------------- | ------------------------------ | ----------------------- |
-| Bold/Italic/Underline | `formatting.spec.ts`           | `--grep "apply bold"`   |
-| Alignment             | `alignment.spec.ts`            | `--grep "align text"`   |
-| Lists                 | `lists.spec.ts`                | `--grep "bullet list"`  |
-| Colors                | `colors.spec.ts`               | `--grep "text color"`   |
-| Fonts                 | `fonts.spec.ts`                | `--grep "font family"`  |
-| Enter/Paragraphs      | `text-editing.spec.ts`         | `--grep "Enter"`        |
-| Undo/Redo             | `scenario-driven.spec.ts`      | `--grep "undo"`         |
-| Line spacing          | `line-spacing.spec.ts`         | `--grep "line spacing"` |
-| Paragraph styles      | `paragraph-styles.spec.ts`     | `--grep "Heading"`      |
-| Toolbar state         | `toolbar-state.spec.ts`        | `--grep "toolbar"`      |
-| Cursor-only ops       | `cursor-paragraph-ops.spec.ts` | `--grep "cursor only"`  |
-
-**Known flaky tests:** `formatting.spec.ts` (bold toggle/undo/redo), `text-editing.spec.ts` (clipboard ops).
-
-### Avoid Hanging
-
-- **Never run all 500+ tests at once** unless explicitly validating final results
-- Use `--timeout=30000` (30s max per test)
-- Use `--workers=4` for parallel execution
-- If a command takes >60s, Ctrl+C and retry with narrower scope
-- Avoid `git log` with large outputs; use `--oneline -10`
-
----
-
-## Subagents — Use For Complex Tasks
-
-Spin up subagents for parallel work using the Task tool:
-
-- **Explore agent** — codebase exploration, finding files, understanding architecture
-- **Plan agent** — designing implementation approaches
-- **Bash agent** — running commands, git operations
-
-Use when: searching across multiple files, investigating cross-cutting features, running parallel tests, complex research.
+| Feature Area          | Test File                                                  |
+| --------------------- | ---------------------------------------------------------- |
+| Bold/Italic/Underline | `formatting.spec.ts`                                       |
+| Alignment             | `alignment.spec.ts`                                        |
+| Lists                 | `lists.spec.ts`                                            |
+| Colors                | `colors.spec.ts`                                           |
+| Fonts                 | `fonts.spec.ts`                                            |
+| Enter/Paragraphs      | `text-editing.spec.ts`                                     |
+| Undo/Redo             | `scenario-driven.spec.ts`                                  |
+| Line spacing          | `line-spacing.spec.ts`                                     |
+| Paragraph styles      | `paragraph-styles.spec.ts`                                 |
+| Toolbar state         | `toolbar-state.spec.ts`                                    |
+| Cursor-only ops       | `cursor-paragraph-ops.spec.ts`                             |
+| Tables                | `tables.spec.ts`, `table-merge-split.spec.ts`              |
+| Hyperlinks            | `hyperlinks.spec.ts`, `hyperlink-popup.spec.ts`            |
+| Ribbon UI             | `ribbon-*.spec.ts` (many files by feature)                 |
+| Images                | `image-roundtrip.spec.ts`, `clipboard-image-paste.spec.ts` |
+| Visual regression     | `visual-regression.spec.ts`, `visual-check.spec.ts`        |
 
 ---
 
 ## ECMA-376 Reference
 
-```bash
+```
 reference/quick-ref/wordprocessingml.md   # Paragraphs, runs, formatting
 reference/quick-ref/themes-colors.md      # Theme colors, fonts, tints
 reference/ecma-376/part1/schemas/wml.xsd  # WordprocessingML schema
@@ -95,7 +120,8 @@ Output must look identical to Microsoft Word. Must preserve: fonts, theme colors
 │  - Real editing state (selection, undo/redo, commands)       │
 │  - Receives keyboard input                                   │
 │  - CSS class: .paged-editor__hidden-pm                       │
-│  - Component: src/paged-editor/HiddenProseMirror.tsx         │
+│  - Component: packages/react/src/paged-editor/              │
+│               HiddenProseMirror.tsx                           │
 └──────────────────────────────────────────────────────────────┘
         │ state changes trigger re-render ↓
 ┌──────────────────────────────────────────────────────────────┐
@@ -104,7 +130,7 @@ Output must look identical to Microsoft Word. Must preserve: fonts, theme colors
 │  - Static DOM, re-built from PM state on every change        │
 │  - Has its own rendering logic (NOT toDOM)                   │
 │  - CSS class: .paged-editor__pages                           │
-│  - Entry: src/layout-painter/renderPage.ts                   │
+│  - Entry: packages/core/src/layout-painter/renderPage.ts     │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -112,7 +138,7 @@ Output must look identical to Microsoft Word. Must preserve: fonts, theme colors
 
 ```
 DOCX file
-  → unzip.ts → parser.ts → Document model (types/)
+  → unzip.ts → parser.ts → Document model (packages/core/src/types/)
   → toProseDoc.ts → ProseMirror document
   → HiddenProseMirror renders off-screen
   → PagedEditor.tsx reads PM state → layout-painter renders visible pages
@@ -129,8 +155,8 @@ User clicks on visible page → `PagedEditor.handlePagesMouseDown()` → `getPos
 ### Debugging Checklist
 
 1. **Visual rendering bug or editing/data bug?**
-   - Visual only → fix in `layout-painter/`
-   - Editing behavior → fix in `prosemirror/extensions/`
+   - Visual only → fix in `packages/core/src/layout-painter/`
+   - Editing behavior → fix in `packages/core/src/prosemirror/extensions/`
    - Both → likely need changes in both systems
 
 2. **Which renderer owns the output?**
@@ -138,31 +164,35 @@ User clicks on visible page → `PagedEditor.handlePagesMouseDown()` → `getPos
    - If you fix `toDOM` for a visual bug, **the user won't see the change**
 
 3. **Where does the data come from?**
-   - DOCX XML → `src/docx/` parsers → `Document` model in `src/types/`
+   - DOCX XML → `packages/core/src/docx/` parsers → `Document` model in `packages/core/src/types/`
    - `toProseDoc.ts` converts Document → PM nodes
    - `fromProseDoc.ts` converts PM → Document (round-trip for saving)
 
 ### Key File Map
 
-| What you're debugging                | Look here                                                |
-| ------------------------------------ | -------------------------------------------------------- |
-| How text/paragraphs appear on screen | `layout-painter/renderParagraph.ts`                      |
-| How images appear on screen          | `layout-painter/renderImage.ts`                          |
-| How tables appear on screen          | `layout-painter/renderTable.ts`                          |
-| How pages are composed               | `layout-painter/renderPage.ts`                           |
-| How a formatting command works       | `prosemirror/extensions/` (marks/ and nodes/)            |
-| How keyboard shortcuts work          | `prosemirror/extensions/features/BaseKeymapExtension.ts` |
-| How toolbar reflects selection       | `prosemirror/plugins/selectionTracker.ts`                |
-| How DOCX XML is parsed               | `docx/paragraphParser.ts`, `docx/tableParser.ts`, etc.   |
-| How PM doc is built from parsed data | `prosemirror/conversion/toProseDoc.ts`                   |
-| Schema (node/mark definitions)       | `prosemirror/extensions/nodes/`, `marks/`                |
-| Table toolbar/dropdown               | `components/ui/TableOptionsDropdown.tsx`                 |
-| Main toolbar                         | `components/Toolbar.tsx`                                 |
-| CSS for editor                       | `prosemirror/editor.css`                                 |
+All paths relative to repo root.
+
+| What you're debugging                | Look here                                                                  |
+| ------------------------------------ | -------------------------------------------------------------------------- |
+| How text/paragraphs appear on screen | `packages/core/src/layout-painter/renderParagraph.ts`                      |
+| How images appear on screen          | `packages/core/src/layout-painter/renderImage.ts`                          |
+| How tables appear on screen          | `packages/core/src/layout-painter/renderTable.ts`                          |
+| How pages are composed               | `packages/core/src/layout-painter/renderPage.ts`                           |
+| How a formatting command works       | `packages/core/src/prosemirror/extensions/` (marks/ and nodes/)            |
+| How keyboard shortcuts work          | `packages/core/src/prosemirror/extensions/features/BaseKeymapExtension.ts` |
+| How toolbar reflects selection       | `packages/core/src/prosemirror/plugins/selectionTracker.ts`                |
+| How DOCX XML is parsed               | `packages/core/src/docx/paragraphParser.ts`, `tableParser.ts`, etc.        |
+| How PM doc is built from parsed data | `packages/core/src/prosemirror/conversion/toProseDoc.ts`                   |
+| Schema (node/mark definitions)       | `packages/core/src/prosemirror/extensions/nodes/`, `marks/`                |
+| Table toolbar/dropdown               | `packages/react/src/components/ui/TableOptionsDropdown.tsx`                |
+| Main toolbar                         | `packages/react/src/components/Toolbar.tsx`                                |
+| Ribbon UI                            | `packages/react/src/components/Ribbon/`                                    |
+| React editor component               | `packages/react/src/components/DocxEditor.tsx`                             |
+| CSS for editor                       | `packages/react/src/styles/`                                               |
 
 ### Extension System
 
-Extensions live in `src/prosemirror/extensions/`:
+Extensions live in `packages/core/src/prosemirror/extensions/`:
 
 - `nodes/` — ParagraphExtension, TableExtension, ImageExtension, etc.
 - `marks/` — BoldExtension, ColorExtension, FontExtension, etc.
@@ -172,22 +202,39 @@ Extensions live in `src/prosemirror/extensions/`:
 
 ### Common Pitfalls
 
-- **Toolbar icons must be SVG imports**: Icons use inline SVGs in `components/ui/Icons.tsx`, NOT a font. `<MaterialSymbol name="foo">` looks up the icon in `iconMap`. If you use a name that's not in the map, it renders as raw text. **Always add new icons as SVG path components** (source: https://fonts.google.com/icons) and register them in `iconMap`.
+- **Toolbar icons**: Icons in `packages/react/src/components/ui/Icons.tsx` use inline SVGs, NOT a font. `<MaterialSymbol name="foo">` looks up the icon in `iconMap`. If the name isn't in the map, it renders as raw text. **Always add new icons as SVG path components** and register them in `iconMap`.
 - **Tailwind CSS conflicts**: Library CSS is scoped via `.ep-root` but layout-painter output isn't always protected. Use explicit inline styles on painted elements.
 - **ProseMirror focus stealing**: Any mousedown that propagates to the PM view will move the cursor. Dropdown/dialog elements need `onMouseDown` with `stopPropagation()`.
 - **Never use `require()`** in extension files — Vite/ESM only.
+- **Build order matters**: Core must build before react package (`bun run build` handles this).
 
 ---
 
-## Browser Testing — Prefer Claude in Chrome
+## Issue-Driven Bug Fix Workflow
 
-For visual testing of UI changes:
+Issue tracker: **https://github.com/giantanalyticsai/docx-editor/issues**
 
-- **Prefer Claude in Chrome** (`mcp__claude-in-chrome__*` tools) — connects to user's actual Chrome, faster, supports file uploads natively
-- Use `tabs_context_mcp` first, then navigate to `http://localhost:5173/`
-- Take screenshots with `computer` action `screenshot`
+```bash
+gh issue view <N> --repo giantanalyticsai/docx-editor
+```
 
-**Playwright MCP** is better for: automated E2E test runs, file upload via `browser_file_upload`, headless/CI scenarios.
+1. **Read** the issue — get description, repro steps, attached files
+2. **Reproduce** locally — `bun run dev` + browser at `localhost:5173`
+3. **Investigate** root cause — use Debugging Checklist + Key File Map above
+4. **Fix** — minimal change, fix the right renderer (layout-painter vs PM)
+5. **Test** — add/update Playwright E2E tests in `e2e/tests/`
+6. **Verify** — `bun run typecheck` + targeted Playwright tests + visual check
+7. **Commit** — reference issue number: `fix: ... (fixes #N)`
+8. **PR** — `gh pr create` referencing issue, include screenshots for visual bugs
+
+---
+
+## Pre-PR Self-Review
+
+1. **DRY** — Is the same logic/style repeated across files? Extract shared code.
+2. **KISS** — Is the solution more complex than needed? Simpler alternatives?
+3. **YAGNI** — Did you add anything not required by the task? Remove it.
+4. **Formatting** — Run `bun run format` to ensure Prettier compliance before pushing.
 
 ---
 
@@ -198,37 +245,72 @@ For visual testing of UI changes:
 3. **Selection bug?** Add `console.log` in `getSelectionRange()` to trace
 4. **OOXML spec question?** Check `reference/quick-ref/` or ECMA-376 schemas
 5. **Timeout?** Kill command, narrow test scope, retry
-6. **Complex task?** Spin up a subagent with Task tool
 
 ---
 
-## Issue-Driven Bug Fix Workflow
+## i18n (Internationalization)
 
-Issue tracker: **https://github.com/eigenpal/docx-js-editor/issues**
+All user-facing strings are translatable via a lightweight i18n system (no external dependencies).
 
-```bash
-gh issue view <N> --repo eigenpal/docx-js-editor
+### Key Files
+
+| What                    | Where                                       |
+| ----------------------- | ------------------------------------------- |
+| Default English strings | `packages/react/i18n/en.json`               |
+| Types (auto-derived)    | `packages/react/src/i18n/types.ts`          |
+| Context + hook          | `packages/react/src/i18n/LocaleContext.tsx` |
+| Barrel export           | `packages/react/src/i18n/index.ts`          |
+
+### How It Works
+
+- `LocaleStrings` type is auto-derived from `en.json` via `typeof import` — no manual interface
+- `TranslationKey` is a union of all valid dot-paths (e.g., `"toolbar.bold" | "dialogs.findReplace.title" | ...`)
+- `<DocxEditor i18n={de} />` deep-merges with English defaults (null keys fall back to English)
+- `useTranslation()` hook returns `t(key, vars?)` for string lookup with `{variable}` interpolation
+
+### Using t() in Components
+
+```typescript
+import { useTranslation } from '../i18n'; // adjust path
+
+function MyComponent() {
+  const { t } = useTranslation();
+  return <button title={t('toolbar.bold')}>{t('common.apply')}</button>;
+}
+
+// With interpolation:
+t('dialogs.findReplace.matchCount', { current: 3, total: 15 })
+// → "3 of 15 matches"
 ```
 
-1. **Read** the issue — get description, repro steps, attached files
-2. **Reproduce** locally — `bun run dev` + browser at `localhost:5173`
-3. **Investigate** root cause — use Debugging Checklist + Key File Map above
-4. **Fix** — minimal change, fix the right renderer (layout-painter vs PM)
-5. **Test** — add/update Playwright E2E tests (see Test File Mapping)
-6. **Verify** — `bun run typecheck` + targeted Playwright tests + visual check
-7. **Commit** — reference issue number: `fix: ... (fixes #N)`
-8. **PR** — `gh pr create` referencing issue, include screenshots for visual bugs
+### Adding a New String
 
----
+1. Add the key + English value to `i18n/en.json` (nest by feature area)
+2. Use `t('your.new.key')` in the component — types update automatically
+3. Run `bun run i18n:fix` to sync community locale files (adds new keys as `null`)
 
-## Pre-PR Self-Review
+### Locale Key States
 
-Before opening any PR, self-review the diff against **DRY, KISS, YAGNI**:
+| Value       | Meaning            | Behavior                              |
+| ----------- | ------------------ | ------------------------------------- |
+| `"Fett"`    | Translated         | Displayed to user                     |
+| `null`      | Not yet translated | Falls back to English                 |
+| _(missing)_ | Out of sync        | **CI fails** — run `bun run i18n:fix` |
 
-1. **DRY** — Is the same logic/style repeated across files? Extract shared code.
-2. **KISS** — Is the solution more complex than needed? Simpler alternatives?
-3. **YAGNI** — Did you add anything not required by the task? Remove it.
-4. **Formatting** — Run `bun run format` to ensure Prettier compliance before pushing.
+### i18n CLI
+
+```bash
+bun run i18n:new <lang>   # scaffold new locale (e.g., bun run i18n:new de)
+bun run i18n:status        # show translation coverage for all locales
+bun run i18n:validate      # check all locale files in sync with en.json
+bun run i18n:fix           # auto-add missing keys as null, remove extras
+```
+
+### When adding UI strings
+
+**Always** use `t()` for user-facing text. Never hardcode English strings in components. After adding new keys to `en.json`, run `bun run i18n:fix` to sync all community locale files.
+
+Full contribution guide: `docs/i18n.md`
 
 ---
 
@@ -236,4 +318,4 @@ Before opening any PR, self-review the diff against **DRY, KISS, YAGNI**:
 
 - Client-side only. No backend.
 - Toolbar icons are Material Symbol fonts (same as Google Docs), saved locally as SVGs.
-- Save screenshots to `screenshots/` folder
+- Save screenshots to `screenshots/` folder.

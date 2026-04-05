@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { submitButtonStyle, CANCEL_BUTTON_STYLE } from './cardUtils';
 import { MentionDropdown, type MentionProvider, type MentionUser } from './MentionDropdown';
+import { useTranslation } from '../../i18n';
 
 const ACTIVE_INPUT_STYLE: React.CSSProperties = {
   width: '100%',
@@ -39,6 +40,7 @@ export function ReplyInput({ onSubmit, mentionProvider }: ReplyInputProps) {
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentions, setMentions] = useState<MentionUser[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { t } = useTranslation();
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -112,7 +114,7 @@ export function ReplyInput({ onSubmit, mentionProvider }: ReplyInputProps) {
             e.stopPropagation();
             setActive(true);
           }}
-          placeholder="Reply or add others with @"
+          placeholder={t('comments.replyPlaceholder')}
           style={INACTIVE_INPUT_STYLE}
         />
       </div>
@@ -151,7 +153,7 @@ export function ReplyInput({ onSubmit, mentionProvider }: ReplyInputProps) {
             setMentionQuery(null);
           }
         }}
-        placeholder="Reply or add others with @"
+        placeholder={t('comments.replyPlaceholder')}
         style={ACTIVE_INPUT_STYLE}
       />
       {mentionQuery !== null && mentionProvider && (
@@ -173,7 +175,7 @@ export function ReplyInput({ onSubmit, mentionProvider }: ReplyInputProps) {
           }}
           style={CANCEL_BUTTON_STYLE}
         >
-          Cancel
+          {t('common.cancel')}
         </button>
         <button
           onClick={(e) => {
@@ -183,7 +185,7 @@ export function ReplyInput({ onSubmit, mentionProvider }: ReplyInputProps) {
           disabled={!trimmed}
           style={submitButtonStyle(!!trimmed)}
         >
-          Reply
+          {t('common.reply')}
         </button>
       </div>
     </div>

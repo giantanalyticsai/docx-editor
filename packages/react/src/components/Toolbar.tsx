@@ -10,6 +10,7 @@
  */
 
 import React, { Fragment, useEffect, useRef } from 'react';
+import { useTranslation } from '../i18n';
 import type { CSSProperties, ReactNode } from 'react';
 import type { ColorValue, Style, Theme } from '@giantanalyticsai/docx-core/types/document';
 import type { FormattingAction, SelectionFormatting } from './toolbarTypes';
@@ -305,6 +306,7 @@ export function Toolbar({
   tableContext,
   onTableAction,
 }: ToolbarProps) {
+  const { t } = useTranslation();
   const toolbarRef = useRef<HTMLDivElement>(null);
 
   const { compact, actions } = useToolbarItems({
@@ -467,7 +469,7 @@ export function Toolbar({
       )}
       style={style}
       role="toolbar"
-      aria-label="Formatting toolbar"
+      aria-label={t('toolbar.ariaLabel')}
       data-testid="toolbar"
       onMouseDown={handleToolbarMouseDown}
       onMouseUp={handleToolbarMouseUp}
