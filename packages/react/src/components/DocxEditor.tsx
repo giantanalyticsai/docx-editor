@@ -28,6 +28,7 @@ import type {
   SectionProperties,
   ColorValue,
 } from '@giantanalyticsai/docx-core/types/document';
+import defaultLocale from '../../i18n/en.json';
 
 import { Toolbar, ToolbarButton, ToolbarGroup } from './Toolbar';
 import type { SelectionFormatting, FormattingAction } from './toolbarTypes';
@@ -93,6 +94,7 @@ const HyperlinkDialog = lazy(() => import('./dialogs/HyperlinkDialog'));
 const TablePropertiesDialog = lazy(() =>
   import('./dialogs/TablePropertiesDialog').then((m) => ({ default: m.TablePropertiesDialog }))
 );
+const SplitCellDialog = lazy(() => import('./dialogs/SplitCellDialog'));
 const ImagePositionDialog = lazy(() =>
   import('./dialogs/ImagePositionDialog').then((m) => ({ default: m.ImagePositionDialog }))
 );
@@ -131,6 +133,7 @@ import { executeCommand } from '@giantanalyticsai/docx-core/agent/executor';
 import { useTableSelection } from '../hooks/useTableSelection';
 import { useDocumentHistory } from '../hooks/useHistory';
 import { clampZoom } from '../hooks/useWheelZoom';
+import { getSplitCellDialogConfig, splitActiveTableCell } from './tableSplit';
 
 // Extension system
 import { createStarterKit } from '@giantanalyticsai/docx-core/prosemirror/extensions/StarterKit';
@@ -192,7 +195,6 @@ import {
   // Table of Contents command
   generateTOC,
   // Table commands
-  isInTable,
   getTableContext,
   insertTable,
   addRowAbove,
@@ -206,7 +208,6 @@ import {
   selectRow as pmSelectRow,
   selectColumn as pmSelectColumn,
   mergeCells as pmMergeCells,
-  splitCell as pmSplitCell,
   setCellBorder,
   setCellVerticalAlign,
   setCellMargins,
@@ -868,6 +869,14 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
 
   // Table properties dialog state
   const [tablePropsOpen, setTablePropsOpen] = useState(false);
+  const [splitCellDialogState, setSplitCellDialogState] = useState({
+    isOpen: false,
+    initialRows: 1,
+    initialCols: 2,
+    minRows: 1,
+    minCols: 1,
+    source: null as 'pm' | 'legacy' | null,
+  });
   // Image position dialog state
   const [imagePositionOpen, setImagePositionOpen] = useState(false);
   // Image properties dialog state
@@ -953,7 +962,14 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     position: { x: number; y: number };
     hasSelection: boolean;
     cursorInTable: boolean;
-  }>({ isOpen: false, position: { x: 0, y: 0 }, hasSelection: false, cursorInTable: false });
+    tableContext: TableContextInfo | null;
+  }>({
+    isOpen: false,
+    position: { x: 0, y: 0 },
+    hasSelection: false,
+    cursorInTable: false,
+    tableContext: null,
+  });
 
   // Debounce timers (avoid full doc walk on every keystroke)
   const extractTrackedChangesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2424,11 +2440,32 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     [history, pushDocument]
   );
 
+  const openSplitCellDialog = useCallback(() => {
+    const view = getActiveEditorView();
+    const pmConfig = view ? getSplitCellDialogConfig(view.state) : null;
+    const legacyConfig = pmConfig ? null : tableSelection.getSplitCellConfig();
+    const config = pmConfig ?? legacyConfig;
+    if (!config) return;
+
+    setSplitCellDialogState({
+      isOpen: true,
+      ...config,
+      source: pmConfig ? 'pm' : 'legacy',
+    });
+  }, [getActiveEditorView, tableSelection]);
+
   // Handle table action from Toolbar - use ProseMirror commands
   const handleTableAction = useCallback(
     (action: TableAction) => {
       const view = getActiveEditorView();
-      if (!view) return;
+      if (!view) {
+        if (action === 'splitCell') {
+          openSplitCellDialog();
+        } else if (typeof action !== 'object') {
+          tableSelection.handleAction(action);
+        }
+        return;
+      }
 
       switch (action) {
         case 'addRowAbove':
@@ -2465,7 +2502,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
           pmMergeCells(view.state, view.dispatch);
           break;
         case 'splitCell':
-          pmSplitCell(view.state, view.dispatch);
+          openSplitCellDialog();
           break;
         // Border actions — use current border spec from toolbar
         case 'borderAll':
@@ -2607,22 +2644,27 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
 
       focusActiveEditor();
     },
-    [tableSelection, getActiveEditorView, focusActiveEditor]
+    [tableSelection, getActiveEditorView, focusActiveEditor, openSplitCellDialog]
   );
 
   // Context menu handler
   const handleEditorContextMenu = useCallback((e: React.MouseEvent) => {
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('.paged-editor__pages')) {
+      return;
+    }
     e.preventDefault();
     e.stopPropagation();
     const view = pagedEditorRef.current?.getView();
-    const inTable = view ? isInTable(view.state) : false;
+    const tableContext = view ? getTableContext(view.state) : { isInTable: false };
     const { from, to } = view?.state.selection ?? { from: 0, to: 0 };
     const hasSel = from !== to;
     setContextMenu({
       isOpen: true,
       position: { x: e.clientX, y: e.clientY },
       hasSelection: hasSel,
-      cursorInTable: inTable,
+      cursorInTable: tableContext.isInTable,
+      tableContext: tableContext.isInTable ? tableContext : null,
     });
   }, []);
 
@@ -2838,7 +2880,27 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         }
       }
     },
-    [getActiveEditorView]
+    [getActiveEditorView, openSplitCellDialog]
+  );
+
+  const handleSplitCellDialogClose = useCallback(() => {
+    setSplitCellDialogState((prev) => ({ ...prev, isOpen: false, source: null }));
+  }, []);
+
+  const handleSplitCellDialogApply = useCallback(
+    (rows: number, cols: number) => {
+      if (splitCellDialogState.source === 'legacy') {
+        tableSelection.applySplitCell(rows, cols);
+        focusActiveEditor();
+        return;
+      }
+
+      const view = getActiveEditorView();
+      if (!view) return;
+      splitActiveTableCell(view.state, view.dispatch, rows, cols);
+      focusActiveEditor();
+    },
+    [focusActiveEditor, getActiveEditorView, splitCellDialogState.source, tableSelection]
   );
 
   // Handle zoom change
@@ -3108,12 +3170,13 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   // Right-click context menu handlers
   const handleContextMenu = useCallback((data: { x: number; y: number; hasSelection: boolean }) => {
     const view = pagedEditorRef.current?.getView();
-    const inTable = view ? isInTable(view.state) : false;
+    const tableContext = view ? getTableContext(view.state) : { isInTable: false };
     setContextMenu({
       isOpen: true,
       position: data,
       hasSelection: data.hasSelection,
-      cursorInTable: inTable,
+      cursorInTable: tableContext.isInTable,
+      tableContext: tableContext.isInTable ? tableContext : null,
     });
   }, []);
 
@@ -3123,6 +3186,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       position: { x: 0, y: 0 },
       hasSelection: false,
       cursorInTable: false,
+      tableContext: null,
     });
   }, []);
 
@@ -3160,12 +3224,23 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         { action: 'deleteRow', label: 'Delete row', dividerAfter: true },
         { action: 'addColumnLeft', label: 'Insert column left' },
         { action: 'addColumnRight', label: 'Insert column right' },
-        { action: 'deleteColumn', label: 'Delete column', dividerAfter: true }
+        { action: 'deleteColumn', label: 'Delete column' },
+        {
+          action: 'mergeCells',
+          label: i18n?.table?.mergeCells ?? defaultLocale.table.mergeCells,
+          disabled: !contextMenu.tableContext?.hasMultiCellSelection,
+        },
+        {
+          action: 'splitCell',
+          label: i18n?.table?.splitCell ?? defaultLocale.table.splitCell,
+          disabled: !contextMenu.tableContext?.canSplitCell,
+          dividerAfter: true,
+        }
       );
     }
     items.push({ action: 'selectAll', label: 'Select All', shortcut: `${mod}+A` });
     return items;
-  }, [contextMenu.hasSelection, contextMenu.cursorInTable]);
+  }, [contextMenu.hasSelection, contextMenu.cursorInTable, contextMenu.tableContext]);
 
   const handleContextMenuAction = useCallback(
     async (action: TextContextAction) => {
@@ -3256,6 +3331,12 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         case 'deleteColumn':
           pmDeleteColumn(view.state, view.dispatch);
           break;
+        case 'mergeCells':
+          pmMergeCells(view.state, view.dispatch);
+          break;
+        case 'splitCell':
+          openSplitCellDialog();
+          break;
         // Comment — delegate to shared handler
         case 'addComment':
           handleStartAddComment();
@@ -3263,7 +3344,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       }
       // TextContextMenu calls onClose after onAction, so no need to close here
     },
-    [getActiveEditorView, focusActiveEditor, handleStartAddComment]
+    [getActiveEditorView, focusActiveEditor, handleStartAddComment, openSplitCellDialog]
   );
 
   // Handle margin changes from rulers
@@ -4900,17 +4981,6 @@ body { background: white; }
                           </Tooltip>
                         )}
 
-                        {/* Right-click context menu */}
-                        <TextContextMenu
-                          isOpen={contextMenu.isOpen}
-                          position={contextMenu.position}
-                          hasSelection={contextMenu.hasSelection}
-                          isEditable={!readOnly}
-                          items={contextMenuItems}
-                          onAction={handleContextMenuAction}
-                          onClose={() => setContextMenu((prev) => ({ ...prev, isOpen: false }))}
-                        />
-
                         {/* Page navigation / indicator */}
                         {showPageNumbers &&
                           state.totalPages > 0 &&
@@ -5107,6 +5177,17 @@ body { background: white; }
                     currentProps={
                       state.pmTableContext?.table?.attrs as Record<string, unknown> | undefined
                     }
+                  />
+                )}
+                {splitCellDialogState.isOpen && (
+                  <SplitCellDialog
+                    isOpen={splitCellDialogState.isOpen}
+                    onClose={handleSplitCellDialogClose}
+                    onApply={handleSplitCellDialogApply}
+                    initialRows={splitCellDialogState.initialRows}
+                    initialCols={splitCellDialogState.initialCols}
+                    minRows={splitCellDialogState.minRows}
+                    minCols={splitCellDialogState.minCols}
                   />
                 )}
                 {imagePositionOpen && (
