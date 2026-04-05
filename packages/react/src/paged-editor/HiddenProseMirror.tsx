@@ -246,11 +246,19 @@ const HiddenProseMirrorComponent = forwardRef<HiddenProseMirrorRef, HiddenProseM
       const editorProps: DirectEditorProps = {
         state: initialState,
         editable: () => !readOnly,
-        dispatchTransaction: (transaction: Transaction) => {
-          if (!viewRef.current || isDestroyingRef.current) return;
+        // Use a regular function (not arrow) so ProseMirror's `.call(this, tr)`
+        // binding gives us the EditorView. This is critical: plugins like ySyncPlugin
+        // dispatch transactions during EditorView construction (in their `view()`
+        // callback), before the constructor returns and viewRef.current is set.
+        dispatchTransaction(this: EditorView, transaction: Transaction) {
+          if (isDestroyingRef.current) return;
 
-          const newState = viewRef.current.state.apply(transaction);
-          viewRef.current.updateState(newState);
+          // Ensure viewRef is set — may be called during construction before
+          // the `new EditorView()` assignment on the next line completes.
+          if (!viewRef.current) viewRef.current = this;
+
+          const newState = this.state.apply(transaction);
+          this.updateState(newState);
 
           // Notify about transaction (use ref to avoid dependency issues)
           onTransactionRef.current?.(transaction, newState);
