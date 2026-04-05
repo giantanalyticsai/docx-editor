@@ -1,5 +1,11 @@
 # @giantanalyticsai/docx-collab
 
+## 1.0.2
+
+### Patch Changes
+
+- [#10](https://github.com/giantanalyticsai/docx-editor/pull/10) [`660833a`](https://github.com/giantanalyticsai/docx-editor/commit/660833aca67f365025876f8ceb77ba127455f4bd) Thanks [@yash-giantanalytics](https://github.com/yash-giantanalytics)! - Sync upstream eigenpal/docx-js-editor: i18n support with locale prop and translations (Polish, German), incremental layout pipeline for 30x faster keystrokes, table context menu fixes with dialog-backed cell splitting, collaborative prop for Yjs integration, live agent chat tools with EditorBridge, tracked changes fixes, cursor-based sidebar expansion, unicode word selection, and header/footer line spacing alignment.
+
 ## 1.0.1
 
 ### Patch Changes
