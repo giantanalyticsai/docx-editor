@@ -79,7 +79,7 @@ When using external collaboration plugins (e.g., `ySyncPlugin` from `y-prosemirr
 
 ```tsx
 import { useMemo } from 'react';
-import { DocxEditor, createEmptyDocument } from '@eigenpal/docx-js-editor';
+import { DocxEditor, createEmptyDocument } from '@giantanalyticsai/docx-js-editor';
 import { ySyncPlugin, yUndoPlugin } from 'y-prosemirror';
 
 function CollaborativeEditor({ ydoc }) {

@@ -8,7 +8,7 @@ const monorepoRoot = path.resolve(__dirname, '../..');
 
 async function fetchGitHubStars(): Promise<number | null> {
   try {
-    const res = await fetch('https://api.github.com/repos/eigenpal/docx-editor');
+    const res = await fetch('https://api.github.com/repos/giantanalyticsai/docx-editor');
     const data = await res.json();
     if (typeof data.stargazers_count === 'number') return data.stargazers_count;
   } catch {}
@@ -42,12 +42,12 @@ export default defineConfig(async () => {
         },
         // Wildcard alias for deep core imports (e.g. @giantanalyticsai/docx-core/utils/docxInput)
         {
-          find: /^@eigenpal\/docx-core\/(.+)/,
+          find: /^@giantanalyticsai\/docx-core\/(.+)/,
           replacement: path.join(monorepoRoot, 'packages/core/src/$1'),
         },
         // Exact match for bare @giantanalyticsai/docx-core (must come AFTER the prefix match above)
         {
-          find: /^@eigenpal\/docx-core$/,
+          find: /^@giantanalyticsai\/docx-core$/,
           replacement: path.join(monorepoRoot, 'packages/core/src/core.ts'),
         },
         { find: '@', replacement: path.join(monorepoRoot, 'packages/react/src') },

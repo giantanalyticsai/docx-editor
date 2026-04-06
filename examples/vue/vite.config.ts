@@ -23,12 +23,12 @@ export default defineConfig({
       },
       // Wildcard alias for deep core imports
       {
-        find: /^@eigenpal\/docx-core\/(.+)/,
+        find: /^@giantanalyticsai\/docx-core\/(.+)/,
         replacement: path.join(monorepoRoot, 'packages/core/src/$1'),
       },
       // Exact match for bare @giantanalyticsai/docx-core (must come AFTER prefix match)
       {
-        find: /^@eigenpal\/docx-core$/,
+        find: /^@giantanalyticsai\/docx-core$/,
         replacement: path.join(monorepoRoot, 'packages/core/src/core.ts'),
       },
     ],
