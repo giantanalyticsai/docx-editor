@@ -1,5 +1,15 @@
 # @giantanalyticsai/docx-editor-agents
 
+## 1.1.1
+
+### Patch Changes
+
+- [#12](https://github.com/giantanalyticsai/docx-editor/pull/12) [`df705d1`](https://github.com/giantanalyticsai/docx-editor/commit/df705d1862ad98cb92b2f0c585c270b24c6fdc55) Thanks [@yash-giantanalytics](https://github.com/yash-giantanalytics)! - fix(build): include agent-use package in monorepo build and rename remaining @eigenpal references
+
+  The root build script was missing @giantanalyticsai/docx-editor-agents, causing
+  it to publish without a dist/ directory. Also updated all example configs, docs,
+  and specs to use @giantanalyticsai scope consistently.
+
 ## 1.1.0
 
 ## 1.0.0
