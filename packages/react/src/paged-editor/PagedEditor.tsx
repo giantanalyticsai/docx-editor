@@ -1775,6 +1775,13 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
       typeof createDocumentChangePipeline
     > | null>(null);
     const lastDocChangeAtRef = useRef<number | null>(null);
+    // Last PM state we invoked onSelectionChange for. updateSelectionOverlay
+    // runs from ResizeObserver / layout / font-load paths too, not only on real
+    // state changes — firing the callback in those cases caused the sidebar
+    // expand→resize→re-fire→collapse feedback loop (regression #268). PM states
+    // are immutable so reference equality is the canonical "nothing changed"
+    // signal (covers selection, doc, and stored-marks changes alike).
+    const lastNotifiedStateRef = useRef<EditorState | null>(null);
 
     // Keep refs in sync with latest props
     onSelectionChangeRef.current = onSelectionChange;
@@ -2524,9 +2531,15 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
         let cellHighlightMs = 0;
         let caretDomMs = 0;
 
-        // Always notify selection change (for toolbar sync) even if layout not ready
-        // Use ref to avoid infinite loops when callback is unstable
-        onSelectionChangeRef.current?.(from, to);
+        // Notify consumers only when PM state actually changed. Overlay may
+        // still need redraw for DOM geometry reasons (resize, layout, font
+        // load) — that happens below — but the public callback should only
+        // fire for real selection / doc / stored-marks changes. See
+        // lastNotifiedStateRef comment; regression #268.
+        if (lastNotifiedStateRef.current !== state) {
+          lastNotifiedStateRef.current = state;
+          onSelectionChangeRef.current?.(from, to);
+        }
 
         // Update visual cell selection highlighting on visible layout table cells
         if (pagesContainerRef.current) {

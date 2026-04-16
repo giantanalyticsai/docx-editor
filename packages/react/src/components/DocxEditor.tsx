@@ -950,6 +950,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const hasTitleBar =
     !!renderLogo || documentName !== undefined || renderTitleBarRight !== undefined;
   const useEditorToolbar = !isRibbon && hasTitleBar;
+  // Accessed by the stable recomputeFloatingCommentBtn callback below.
+  // Kept in sync below after that callback is declared.
   // Floating "add comment" button position (relative to scroll container, null = hidden)
   const [floatingCommentBtn, setFloatingCommentBtn] = useState<{
     top: number;
@@ -1714,6 +1716,63 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     ]
   );
 
+  // Recompute the floating "add comment" button position from the current PM
+  // selection + page/container geometry. Called from handleSelectionChange and
+  // from the geometry-change effects below (resize, zoom), because PagedEditor's
+  // onSelectionChange no longer fires on mere overlay redraws after the
+  // state-identity dedup in #268.
+  const readOnlyForFloatingBtnRef = useRef(false);
+  const recomputeFloatingCommentBtn = useCallback(() => {
+    const view = pagedEditorRef.current?.getView();
+    if (!view) return;
+    if (isAddingCommentRef.current || readOnlyForFloatingBtnRef.current) {
+      setFloatingCommentBtn(null);
+      return;
+    }
+    const { from, to } = view.state.selection;
+    if (from === to) {
+      setFloatingCommentBtn(null);
+      return;
+    }
+    const container = scrollContainerRef.current;
+    const parentEl = editorContentRef.current;
+    if (!container || !parentEl) return;
+    const top = findSelectionYPosition(container, parentEl, from);
+    if (top == null) return;
+    const pagesEl = container.querySelector('.paged-editor__pages');
+    const pageEl = pagesEl?.querySelector('.layout-page') as HTMLElement | null;
+    const left = pageEl
+      ? pageEl.getBoundingClientRect().right - parentEl.getBoundingClientRect().left
+      : parentEl.getBoundingClientRect().width / 2 + 408;
+    setFloatingCommentBtn({ top, left });
+  }, []);
+  // Keep the readOnly ref used by recomputeFloatingCommentBtn in sync
+  readOnlyForFloatingBtnRef.current = readOnly;
+
+  // Reposition the floating "add comment" button when the editor container
+  // resizes (window resize, sidebar toggle, loading→ready transition) or when
+  // zoom changes. Both move the page edges without changing PM selection, so
+  // the onSelectionChange path no longer covers them after the dedup fix in
+  // #268. The scroll container may not be mounted on the first render (loading
+  // state renders a different subtree), so re-run the effect whenever that
+  // state flips — that's the point at which the container first becomes
+  // available.
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const ro = new ResizeObserver(() => recomputeFloatingCommentBtn());
+    ro.observe(container);
+    const onWinResize = () => recomputeFloatingCommentBtn();
+    window.addEventListener('resize', onWinResize);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', onWinResize);
+    };
+  }, [state.isLoading, recomputeFloatingCommentBtn]);
+  useEffect(() => {
+    recomputeFloatingCommentBtn();
+  }, [state.zoom, recomputeFloatingCommentBtn]);
+
   // Handle selection changes from ProseMirror
   const handleSelectionChange = useCallback(
     (selectionState: SelectionState | null) => {
@@ -1883,22 +1942,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       }));
 
       // Update floating comment button position
-      if (view && selectionState.hasSelection && !isAddingComment && !readOnly) {
-        const container = scrollContainerRef.current;
-        const parentEl = editorContentRef.current;
-        const { from: selFrom } = view.state.selection;
-        const top = findSelectionYPosition(container, parentEl, selFrom);
-        if (top != null && container && parentEl) {
-          const pagesEl = container.querySelector('.paged-editor__pages');
-          const pageEl = pagesEl?.querySelector('.layout-page') as HTMLElement | null;
-          const left = pageEl
-            ? pageEl.getBoundingClientRect().right - parentEl.getBoundingClientRect().left
-            : parentEl.getBoundingClientRect().width / 2 + 408;
-          setFloatingCommentBtn({ top, left });
-        }
-      } else {
-        setFloatingCommentBtn(null);
-      }
+      recomputeFloatingCommentBtn();
 
       // Notify parent
       onSelectionChange?.(selectionState);
@@ -4256,6 +4300,13 @@ body { background: white; }
     onCommentResolve: (id) => {
       const target = comments.find((c) => c.id === id);
       setComments((prev) => prev.map((c) => (c.id === id ? { ...c, done: true } : c)));
+      // Collapse the card to its checkmark marker immediately. Resolving
+      // doesn't go through a PM transaction, so the cursor-based collapse
+      // path wouldn't fire; do it explicitly. Cascades into the highlight
+      // hide via resolvedIdsForRender.
+      if (expandedSidebarItem === `comment-${id}`) {
+        setExpandedSidebarItem(null);
+      }
       if (target) onCommentResolve?.({ ...target, done: true });
     },
     onCommentUnresolve: (id) => {
@@ -4453,7 +4504,12 @@ body { background: white; }
           <MaterialSymbol name="add_comment" size={18} />
         </ToolbarButton>
         <ToolbarButton
-          onClick={() => setShowCommentsSidebar(!showCommentsSidebar)}
+          onClick={() => {
+            // Also reset expansion so reshowing the sidebar lands on the default
+            // collapsed state — resolved threads stay as checkmarks, not opened.
+            setShowCommentsSidebar((v) => !v);
+            setExpandedSidebarItem(null);
+          }}
           active={showCommentsSidebar}
           title="Toggle comments sidebar"
           ariaLabel="Toggle comments sidebar"
@@ -4760,6 +4816,21 @@ body { background: white; }
                     style={editorContainerStyle}
                     ref={scrollContainerRef}
                     data-testid="editor-scroll"
+                    onMouseDown={(e) => {
+                      // Click in the grey gutter around the page → collapse any
+                      // expanded sidebar card. Clicks on the doc body already
+                      // collapse via the cursor-mark detector; clicks inside the
+                      // sidebar are user interactions with the card itself.
+                      const target = e.target as HTMLElement;
+                      if (
+                        target.closest('.paged-editor__pages') ||
+                        target.closest('.docx-unified-sidebar') ||
+                        target.closest('.docx-comment-margin-markers')
+                      ) {
+                        return;
+                      }
+                      setExpandedSidebarItem(null);
+                    }}
                   >
                     {/* Editor content wrapper */}
                     <div style={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative' }}>
@@ -4854,7 +4925,13 @@ body { background: white; }
                               let cursorSidebarItem: string | null = null;
                               for (const mark of marks) {
                                 if (mark.type.name === 'comment' && mark.attrs.commentId != null) {
-                                  cursorSidebarItem = `comment-${mark.attrs.commentId}`;
+                                  // Skip resolved comments — they stay collapsed as a checkmark
+                                  // marker unless the user explicitly clicks it. Otherwise the
+                                  // sidebar fills up with old threads every time the cursor
+                                  // passes through commented text.
+                                  const commentId = mark.attrs.commentId as number;
+                                  if (resolvedCommentIds.has(commentId)) continue;
+                                  cursorSidebarItem = `comment-${commentId}`;
                                   break;
                                 }
                                 if (
