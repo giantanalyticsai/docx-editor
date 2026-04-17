@@ -37,7 +37,7 @@ import type {
 } from '../prosemirror/schema/marks';
 import type { ParagraphAttrs as PMParagraphAttrs } from '../prosemirror/schema/nodes';
 import type { SectionProperties, Theme } from '../types/document';
-import { resolveColor, resolveHighlightToCss } from '../utils/colorResolver';
+import { resolveColor, resolveColorToHex, resolveHighlightToCss } from '../utils/colorResolver';
 import { pointsToPixels } from '../utils/units';
 
 /**
@@ -516,10 +516,8 @@ function convertParagraphAttrs(pmAttrs: PMParagraphAttrs, theme?: Theme | null):
     }
   }
 
-  // Shading (background color)
-  if (pmAttrs.shading?.fill?.rgb) {
-    attrs.shading = `#${pmAttrs.shading.fill.rgb}`;
-  }
+  const shadingHex = resolveColorToHex(pmAttrs.shading?.fill, theme);
+  if (shadingHex) attrs.shading = `#${shadingHex}`;
 
   // Tab stops
   if (pmAttrs.tabs && pmAttrs.tabs.length > 0) {

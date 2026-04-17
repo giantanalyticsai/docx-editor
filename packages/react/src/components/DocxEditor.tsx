@@ -127,7 +127,7 @@ import { DefaultLoadingIndicator, DefaultPlaceholder, ParseError } from './DocxE
 import { parseDocx } from '@giantanalyticsai/docx-core/docx/parser';
 import { type DocxInput } from '@giantanalyticsai/docx-core/utils/docxInput';
 import { onFontsLoaded, loadDocumentFonts } from '@giantanalyticsai/docx-core/utils/fontLoader';
-import { resolveColor } from '@giantanalyticsai/docx-core/utils/colorResolver';
+import { resolveColorToHex } from '@giantanalyticsai/docx-core/utils/colorResolver';
 import { twipsToPixels } from '@giantanalyticsai/docx-core/utils/units';
 import { executeCommand } from '@giantanalyticsai/docx-core/agent/executor';
 import { useTableSelection } from '../hooks/useTableSelection';
@@ -1796,17 +1796,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
 
       // Sync borderSpecRef with the current cell's actual border color
       if (pmTableCtx?.cellBorderColor) {
-        const colorVal = pmTableCtx.cellBorderColor;
-        // Resolve theme/auto colors to hex
-        let rgb = colorVal.rgb;
-        if (!rgb || rgb === 'auto') {
-          const resolved = resolveColor(colorVal, theme);
-          rgb = resolved.replace(/^#/, '');
+        const rgb = resolveColorToHex(pmTableCtx.cellBorderColor, theme);
+        if (rgb) {
+          borderSpecRef.current = { ...borderSpecRef.current, color: { rgb } };
         }
-        borderSpecRef.current = {
-          ...borderSpecRef.current,
-          color: { rgb },
-        };
       }
 
       // Check if cursor is on an image (NodeSelection)
@@ -1891,8 +1884,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         }
       }
 
-      // Extract text color as hex string
-      const textColor = textFormatting.color?.rgb ? `#${textFormatting.color.rgb}` : undefined;
+      const textColorHex = resolveColorToHex(textFormatting.color, theme);
+      const textColor = textColorHex ? `#${textColorHex}` : undefined;
 
       // Build list state from numPr
       const numPr = paragraphFormatting.numPr;

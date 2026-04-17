@@ -8,6 +8,7 @@ import type {
 import {
   generateThemeTintShadeMatrix,
   resolveColor,
+  resolveColorToHex,
   resolveHighlightColor,
 } from '@giantanalyticsai/docx-core/utils/colorResolver';
 import type { ThemeMatrixCell } from '@giantanalyticsai/docx-core/utils/colorResolver';
@@ -250,7 +251,7 @@ function isSelectedCell(
   const resolved =
     typeof value === 'string'
       ? value.replace(/^#/, '').toUpperCase()
-      : resolveColor(value, theme).replace(/^#/, '').toUpperCase();
+      : resolveColorToHex(value, theme);
   return resolved === cellHex.toUpperCase();
 }
 
