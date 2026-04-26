@@ -31,6 +31,7 @@ import type {
 import defaultLocale from '../../i18n/en.json';
 
 import { Toolbar, ToolbarButton, ToolbarGroup } from './Toolbar';
+import type { FontOption } from './ui/FontPicker';
 import type { SelectionFormatting, FormattingAction } from './toolbarTypes';
 import { RibbonToolbar } from './Ribbon';
 import { EditorToolbar } from './EditorToolbar';
@@ -338,6 +339,19 @@ export interface DocxEditorProps {
   showOutline?: boolean;
   /** Whether to show the floating outline toggle button (default: true) */
   showOutlineButton?: boolean;
+  /**
+   * Custom list of fonts shown in the toolbar's font-family dropdown.
+   * Strings render in the "Other" group; pass `FontOption[]` for category
+   * grouping and CSS fallback chains. Omit to use the built-in 12-font
+   * default. An empty array renders an empty (but enabled) dropdown.
+   *
+   * Pass a stable reference (memoized or module-level) — inline arrays
+   * create a new identity per render and invalidate the picker's memo.
+   *
+   * @example fontFamilies={['Arial', 'Roboto']}
+   * @example fontFamilies={[{ name: 'Roboto', fontFamily: 'Roboto, sans-serif', category: 'sans-serif' }]}
+   */
+  fontFamilies?: ReadonlyArray<string | FontOption>;
   /** Whether to show print button in toolbar (default: true) */
   showPrintButton?: boolean;
   /** Print options for print preview */
@@ -830,6 +844,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     loadingIndicator,
     showOutline: showOutlineProp = false,
     showOutlineButton = true,
+    fontFamilies,
     showPrintButton = true,
     printOptions: _printOptions,
     onPrint,
@@ -4769,6 +4784,7 @@ body { background: white; }
                               documentStyles={history.state?.package.styles?.styles}
                               theme={history.state?.package.theme || theme}
                               showPrintButton={showPrintButton}
+                              fontFamilies={fontFamilies}
                               onPrint={handleDirectPrint}
                               showZoomControl={showZoomControl}
                               zoom={state.zoom}

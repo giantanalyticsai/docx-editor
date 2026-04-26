@@ -18,6 +18,7 @@ import { useToolbarItems } from './toolbarItems';
 import { Button } from './ui/Button';
 import { Tooltip } from './ui/Tooltip';
 import type { TableAction } from './ui/TableToolbar';
+import type { FontOption } from './ui/FontPicker';
 import { cn } from '../lib/utils';
 
 // ============================================================================
@@ -54,6 +55,13 @@ export interface ToolbarProps {
   children?: ReactNode;
   /** Whether to show font family picker (default: true) */
   showFontPicker?: boolean;
+  /**
+   * Custom list of fonts in the toolbar dropdown. When omitted, the built-in
+   * 12-font default is used. Strings render in the "Other" group; pass
+   * `FontOption[]` for category grouping and CSS fallback chains.
+   * An empty array renders an empty (but enabled) dropdown.
+   */
+  fontFamilies?: ReadonlyArray<string | FontOption>;
   /** Whether to show font size picker (default: true) */
   showFontSizePicker?: boolean;
   /** Whether to show text color picker (default: true) */
