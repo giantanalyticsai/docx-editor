@@ -303,6 +303,12 @@ export interface PagedEditorProps {
   onContextMenu?: (data: { x: number; y: number; hasSelection: boolean }) => void;
   /** Callback with pre-computed Y positions for comment/tracked-change anchors (for sidebar positioning without DOM queries). */
   onAnchorPositionsChange?: (positions: Map<string, number>) => void;
+  /**
+   * Callback fired when the page count changes after a layout pass.
+   * Parents use this to keep their own page counters (e.g. scroll indicator,
+   * `getTotalPages()` ref method) in sync without having to poll `getLayout()`.
+   */
+  onTotalPagesChange?: (totalPages: number) => void;
   /** Set of resolved comment IDs — hides highlight for these comments */
   resolvedCommentIds?: Set<number>;
 }
@@ -343,6 +349,11 @@ export interface PagedEditorRef {
    * @returns whether a matching paragraph was found
    */
   scrollToParaId(paraId: string): boolean;
+  /**
+   * Scroll the paginated view so `pageNumber` (1-indexed) is in view.
+   * No-op if the layout isn't ready yet or pageNumber is out of range.
+   */
+  scrollToPage(pageNumber: number): void;
 }
 
 // =============================================================================
@@ -1826,6 +1837,7 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
       onHyperlinkClick,
       onContextMenu,
       onAnchorPositionsChange,
+      onTotalPagesChange,
       resolvedCommentIds,
     } = props;
 
@@ -1925,6 +1937,18 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
 
     // State
     const [layout, setLayout] = useState<Layout | null>(null);
+    const lastTotalPagesRef = useRef<number>(0);
+    const onTotalPagesChangeRef = useRef(onTotalPagesChange);
+    onTotalPagesChangeRef.current = onTotalPagesChange;
+    useEffect(() => {
+      // Fires on every page-count change including N → 0 (e.g. doc cleared),
+      // so consumers don't get stuck showing the previous count. ref=0 init
+      // matches `layout?.pages.length ?? 0` so we don't fire on initial mount.
+      const total = layout?.pages.length ?? 0;
+      if (total === lastTotalPagesRef.current) return;
+      lastTotalPagesRef.current = total;
+      onTotalPagesChangeRef.current?.(total);
+    }, [layout]);
     const [blocks, setBlocks] = useState<FlowBlock[]>([]);
     const [measures, setMeasures] = useState<Measure[]>([]);
     const [isFocused, setIsFocused] = useState(false);
@@ -3384,6 +3408,29 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
       [layout, blocks, measures, getScrollContainer]
     );
 
+    // 1-indexed pageNumber. Prefers scrolling to the page's first PM-anchored
+    // fragment so virtualization is handled by scrollToPositionImpl. Falls
+    // back to the page shell directly when no fragment carries pmStart
+    // (e.g. a page containing only a continuation of a long paragraph or a
+    // floating image without a PM anchor).
+    const scrollToPageImpl = useCallback(
+      (pageNumber: number): void => {
+        if (!Number.isInteger(pageNumber) || pageNumber < 1) return;
+        if (!layout || pageNumber > layout.pages.length) return;
+        const page = layout.pages[pageNumber - 1];
+        for (const frag of page.fragments) {
+          if (typeof frag.pmStart === 'number') {
+            scrollToPositionImpl(frag.pmStart, true);
+            return;
+          }
+        }
+        const shell =
+          pagesContainerRef.current?.querySelectorAll<HTMLElement>('.layout-page')[pageNumber - 1];
+        shell?.scrollIntoView({ block: 'center', inline: 'nearest' });
+      },
+      [layout, scrollToPositionImpl]
+    );
+
     const scrollToParaIdImpl = useCallback(
       (paraId: string): boolean => {
         const state = hiddenPMRef.current?.getState();
@@ -4714,8 +4761,9 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
         },
         scrollToPosition: scrollToPositionImpl,
         scrollToParaId: scrollToParaIdImpl,
+        scrollToPage: scrollToPageImpl,
       }),
-      [layout, runLayoutPipeline, scrollToPositionImpl, scrollToParaIdImpl]
+      [layout, runLayoutPipeline, scrollToPositionImpl, scrollToParaIdImpl, scrollToPageImpl]
     );
 
     // Update selection overlay when layout changes
@@ -4761,9 +4809,10 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
           },
           scrollToPosition: scrollToPositionImpl,
           scrollToParaId: scrollToParaIdImpl,
+          scrollToPage: scrollToPageImpl,
         });
       }
-    }, [layout, runLayoutPipeline, scrollToParaIdImpl]);
+    }, [layout, runLayoutPipeline, scrollToParaIdImpl, scrollToPageImpl]);
     // NOTE: onReady removed from dependencies - accessed via ref to prevent infinite loops
 
     // =========================================================================

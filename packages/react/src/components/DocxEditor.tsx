@@ -420,7 +420,12 @@ export interface DocxEditorRef {
   getCurrentPage: () => number;
   /** Get total page count */
   getTotalPages: () => number;
-  /** Scroll to a specific page */
+  /**
+   * Scroll the paginated view so the given page is in view.
+   * Page numbers are 1-indexed (matches `getCurrentPage` / `getTotalPages`).
+   * No-op for out-of-range or non-integer values.
+   * @example ref.current?.scrollToPage(2)
+   */
   scrollToPage: (pageNumber: number) => void;
   /**
    * Scroll the paginated view to the paragraph with the given Word `w14:paraId`.
@@ -3886,10 +3891,10 @@ body { background: white; }
       focus: () => {
         pagedEditorRef.current?.focus();
       },
-      getCurrentPage: () => state.currentPage,
-      getTotalPages: () => state.totalPages,
-      scrollToPage: (_pageNumber: number) => {
-        // TODO: Implement page navigation in ProseMirror
+      getCurrentPage: () => scrollPageInfo.currentPage,
+      getTotalPages: () => scrollPageInfo.totalPages,
+      scrollToPage: (pageNumber: number) => {
+        pagedEditorRef.current?.scrollToPage(pageNumber);
       },
       scrollToParaId: (paraId: string) => pagedEditorRef.current?.scrollToParaId(paraId) ?? false,
       scrollToPosition: (pmPos: number) => {
@@ -4987,6 +4992,11 @@ body { background: white; }
                           onContextMenu={handleContextMenu}
                           commentsSidebarOpen={sidebarOpen}
                           onAnchorPositionsChange={setAnchorPositions}
+                          onTotalPagesChange={(totalPages) => {
+                            setScrollPageInfo((prev) =>
+                              prev.totalPages === totalPages ? prev : { ...prev, totalPages }
+                            );
+                          }}
                           resolvedCommentIds={resolvedIdsForRender}
                           scrollContainerRef={scrollContainerRef}
                           sidebarOverlay={
