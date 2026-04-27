@@ -14,6 +14,7 @@
 import { useCallback, useRef } from 'react';
 import { TextSelection } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
+import { findVerticalScrollParent } from './findVerticalScrollParent';
 
 /** Only match lines inside page body content, skipping header/footer lines. */
 const CONTENT_LINE_SELECTOR = '.layout-page-content .layout-line';
@@ -23,31 +24,12 @@ export interface VisualLineNavigationOptions {
 }
 
 /**
- * Find the nearest ancestor that actually scrolls (overflow auto/scroll
- * and scrollHeight > clientHeight).
- */
-function findScrollParent(el: HTMLElement): HTMLElement | null {
-  let parent = el.parentElement;
-  while (parent && parent !== document.documentElement) {
-    const { overflowY } = getComputedStyle(parent);
-    if (
-      (overflowY === 'auto' || overflowY === 'scroll') &&
-      parent.scrollHeight > parent.clientHeight
-    ) {
-      return parent;
-    }
-    parent = parent.parentElement;
-  }
-  return null;
-}
-
-/**
  * Scroll the nearest scrollable ancestor so that the target element is visible.
  * Uses manual scroll math because `scrollIntoView` misbehaves when the
  * content is inside a CSS `transform: scale()` viewport.
  */
 function scrollIntoViewIfNeeded(el: HTMLElement): void {
-  const container = findScrollParent(el);
+  const container = findVerticalScrollParent(el);
   if (!container) return;
   const elRect = el.getBoundingClientRect();
   const containerRect = container.getBoundingClientRect();

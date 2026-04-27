@@ -931,3 +931,4 @@ export {
 } from './section-breaks';
 // Re-export types
 export * from './types';
+export { findPageIndexContainingPmPos } from './findPageIndexContainingPmPos';

@@ -59,7 +59,10 @@ import type { ColumnLayout } from '@giantanalyticsai/docx-core/layout-engine';
 import { DecorationLayer } from './DecorationLayer';
 
 // Layout engine
-import { layoutDocument } from '@giantanalyticsai/docx-core/layout-engine';
+import {
+  layoutDocument,
+  findPageIndexContainingPmPos,
+} from '@giantanalyticsai/docx-core/layout-engine';
 import type {
   FlowBlock,
   ImageBlock,
@@ -88,6 +91,7 @@ import {
   type FootnoteRenderItem,
   type HeaderFooterContent,
   type RenderPageOptions,
+  type RenderPagesUpdateKind,
   renderPages,
 } from '@giantanalyticsai/docx-core/layout-painter/renderPage';
 // Table commands (for quick-action insert buttons)
@@ -114,10 +118,12 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
+import { findStartPosForParaId } from '@giantanalyticsai/docx-core/prosemirror';
 // Sidebar constants
 import { SIDEBAR_DOCUMENT_SHIFT } from '../components/sidebar/constants';
 import { PERF_ENABLED } from '../utils/perfFlags';
@@ -134,6 +140,77 @@ import { useDragAutoScroll } from './useDragAutoScroll';
 import { useVisualLineNavigation } from './useVisualLineNavigation';
 import { createDocumentChangePipeline } from './documentChangePipeline';
 import { mapDirtyRangesToTopLevelIndices } from './dirtyRangeMapper';
+import { findVerticalScrollParentOrRoot } from './findVerticalScrollParent';
+
+/**
+ * Vertically scroll `container` so `el`'s center aligns with the container's visible center.
+ * Avoids `element.scrollIntoView()` — it misbehaves when content sits under CSS `transform`
+ * (e.g. zoom viewport); see `useVisualLineNavigation` scrollIntoViewIfNeeded comment.
+ */
+function scrollElementCenterIntoContainer(
+  el: HTMLElement,
+  container: HTMLElement,
+  behavior: ScrollBehavior
+): void {
+  const cRect = container.getBoundingClientRect();
+  const eRect = el.getBoundingClientRect();
+  const elCenter = eRect.top + eRect.height / 2;
+  const cCenter = cRect.top + cRect.height / 2;
+  const delta = elCenter - cCenter;
+  const maxScroll = Math.max(0, container.scrollHeight - container.clientHeight);
+  const targetTop = Math.max(0, Math.min(maxScroll, container.scrollTop + delta));
+  if (behavior === 'smooth') {
+    container.scrollTo({ top: targetTop, behavior: 'smooth' });
+  } else {
+    container.scrollTop = targetTop;
+  }
+}
+
+/**
+ * Run `fn` after layout/paint has settled (3 nested rAFs). Aborts if `signal`
+ * fires before any of the frames runs, and tracks rAF ids so they can be
+ * cancelled by the caller. Used for the virtualized-paint settle path in
+ * scrollToPositionImpl / scrollToParaIdImpl.
+ */
+function runAfterPaint(fn: () => void, signal: AbortSignal): void {
+  if (signal.aborted) return;
+  const id1 = requestAnimationFrame(() => {
+    if (signal.aborted) return;
+    const id2 = requestAnimationFrame(() => {
+      if (signal.aborted) return;
+      const id3 = requestAnimationFrame(() => {
+        if (signal.aborted) return;
+        fn();
+      });
+      signal.addEventListener('abort', () => cancelAnimationFrame(id3), { once: true });
+    });
+    signal.addEventListener('abort', () => cancelAnimationFrame(id2), { once: true });
+  });
+  signal.addEventListener('abort', () => cancelAnimationFrame(id1), { once: true });
+}
+
+/**
+ * Largest painted `[data-pm-start]` value ≤ `pmPos`. Used to anchor scroll restore
+ * when `renderPages` rebuilds the DOM.
+ */
+function findPaintedPmStartAtOrBefore(pages: HTMLElement, pmPos: number): number | null {
+  let best: number | null = null;
+  const list = pages.querySelectorAll<HTMLElement>('[data-pm-start]');
+  for (let i = 0; i < list.length; i++) {
+    const raw = list[i].dataset.pmStart;
+    if (raw == null) continue;
+    const p = Number(raw);
+    if (Number.isNaN(p)) continue;
+    if (p <= pmPos && (best === null || p > best)) best = p;
+  }
+  return best;
+}
+
+/** Min-height of the zoom/viewport wrapper (padding + page stack). Must match JSX `totalHeight`. */
+function viewportMinHeightPx(layout: Layout, pageHeight: number, pageGap: number): number {
+  const n = layout.pages.length;
+  return n * pageHeight + Math.max(0, n - 1) * pageGap + VIEWPORT_PADDING_TOP + 24;
+}
 
 // =============================================================================
 // TYPES
@@ -261,6 +338,11 @@ export interface PagedEditorRef {
   relayout(): void;
   /** Scroll the visible pages to bring a PM position into view. */
   scrollToPosition(pmPos: number): void;
+  /**
+   * Scroll to the paragraph identified by Word `w14:paraId` / PM `paraId`.
+   * @returns whether a matching paragraph was found
+   */
+  scrollToParaId(paraId: string): boolean;
 }
 
 // =============================================================================
@@ -312,6 +394,7 @@ const viewportStyles: CSSProperties = {
   alignItems: 'center',
   paddingTop: VIEWPORT_PADDING_TOP,
   paddingBottom: 24,
+  overflowAnchor: 'none',
 };
 
 const pagesContainerStyles: CSSProperties = {
@@ -319,6 +402,7 @@ const pagesContainerStyles: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
+  overflowAnchor: 'none',
 };
 
 const pluginOverlaysStyles: CSSProperties = {
@@ -1756,6 +1840,16 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
     // Refs
     const containerRef = useRef<HTMLDivElement>(null);
     const pagesContainerRef = useRef<HTMLDivElement>(null);
+    /** Viewport wrapper: sync minHeight/marginBottom in layout pipeline before scroll restore. */
+    const viewportLayoutRef = useRef<HTMLDivElement>(null);
+    const pendingScrollRestoreRef = useRef<{
+      renderKind: RenderPagesUpdateKind;
+      ratio: number;
+      scrollTopSnapshot: number | null;
+      domAnchorPmStart: number | null;
+      domAnchorOffsetInScroller: number;
+    } | null>(null);
+    const pendingIncrementalScrollSnapshotWrittenAtRef = useRef(0);
     const hiddenPMRef = useRef<HiddenProseMirrorRef>(null);
     const painterRef = useRef<LayoutPainter | null>(null);
     const incrementalCacheRef = useRef(createIncrementalBlockCache());
@@ -1993,6 +2087,25 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
 
         // Signal layout is starting
         syncCoordinator.onLayoutStart();
+
+        /** Re-clamp scroll when a second layout pass runs before useLayoutEffect consumes pending. */
+        const applyPendingIncrementalScrollSnapshot = (onlyIfSnapshotJustWritten: boolean) => {
+          const pend = pendingScrollRestoreRef.current;
+          if (pend?.renderKind !== 'incremental' || pend.scrollTopSnapshot == null) return;
+          if (onlyIfSnapshotJustWritten) {
+            const age = performance.now() - pendingIncrementalScrollSnapshotWrittenAtRef.current;
+            if (age > 32) return;
+          }
+          const pe0 = pagesContainerRef.current;
+          const sp0 = pe0 ? (getScrollContainer() ?? findVerticalScrollParentOrRoot(pe0)) : null;
+          if (!sp0?.isConnected) return;
+          const max0 = Math.max(1, sp0.scrollHeight - sp0.clientHeight);
+          const target = Math.min(Math.max(0, pend.scrollTopSnapshot), max0);
+          if (Math.abs(sp0.scrollTop - target) > 0.5) {
+            sp0.scrollTop = target;
+          }
+        };
+        applyPendingIncrementalScrollSnapshot(true);
 
         try {
           // Step 1: Convert PM doc to flow blocks
@@ -2248,6 +2361,36 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
           // Step 4: Paint to DOM
           if (pagesContainerRef.current && painterRef.current) {
             stepStart = performance.now();
+            pendingScrollRestoreRef.current = null;
+            pendingIncrementalScrollSnapshotWrittenAtRef.current = 0;
+
+            const pagesEl = pagesContainerRef.current;
+            const scrollParent = getScrollContainer() ?? findVerticalScrollParentOrRoot(pagesEl);
+            let scrollRestoreRatioPre = 0;
+            let domAnchorPmStart: number | null = null;
+            let domAnchorOffsetInScroller = 0;
+            if (scrollParent?.isConnected) {
+              if (!scrollParent.style.overflowAnchor) {
+                scrollParent.style.setProperty('overflow-anchor', 'none');
+              }
+              const maxBefore = Math.max(1, scrollParent.scrollHeight - scrollParent.clientHeight);
+              scrollRestoreRatioPre = scrollParent.scrollTop / maxBefore;
+
+              const head = state.selection.head;
+              domAnchorPmStart = findPaintedPmStartAtOrBefore(pagesEl, head);
+              if (domAnchorPmStart != null) {
+                const anchorEl = pagesEl.querySelector<HTMLElement>(
+                  `[data-pm-start="${domAnchorPmStart}"]`
+                );
+                if (anchorEl) {
+                  const ar = anchorEl.getBoundingClientRect();
+                  const sr = scrollParent.getBoundingClientRect();
+                  domAnchorOffsetInScroller = ar.top - sr.top;
+                } else {
+                  domAnchorPmStart = null;
+                }
+              }
+            }
 
             // Build block lookup
             const blockLookup: BlockLookup = new Map();
@@ -2266,7 +2409,7 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
               : undefined;
 
             // Render pages to container
-            renderPages(newLayout.pages, pagesContainerRef.current, {
+            const renderPagesKind = renderPages(newLayout.pages, pagesContainerRef.current, {
               pageGap,
               showShadow: true,
               pageBackground: '#fff',
@@ -2292,6 +2435,37 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
               footnotesByPage?: Map<number, FootnoteRenderItem[]>;
             });
 
+            const vp = viewportLayoutRef.current;
+            if (vp) {
+              const mh = viewportMinHeightPx(newLayout, pageSize.h, pageGap);
+              vp.style.minHeight = `${mh}px`;
+              if (zoom !== 1) {
+                vp.style.marginBottom = `${mh * (zoom - 1)}px`;
+              } else {
+                vp.style.marginBottom = '';
+              }
+            }
+
+            if (scrollParent?.isConnected) {
+              let ratioForRestore = scrollRestoreRatioPre;
+              if (renderPagesKind === 'incremental') {
+                const maxPost = Math.max(1, scrollParent.scrollHeight - scrollParent.clientHeight);
+                ratioForRestore = scrollParent.scrollTop / maxPost;
+              }
+              const scrollTopSnapshot =
+                renderPagesKind === 'incremental' ? scrollParent.scrollTop : null;
+              pendingScrollRestoreRef.current = {
+                renderKind: renderPagesKind,
+                ratio: ratioForRestore,
+                scrollTopSnapshot,
+                domAnchorPmStart,
+                domAnchorOffsetInScroller,
+              };
+              if (renderPagesKind === 'incremental' && scrollTopSnapshot != null) {
+                pendingIncrementalScrollSnapshotWrittenAtRef.current = performance.now();
+              }
+            }
+
             stepTime = performance.now() - stepStart;
             console.debug(`[PagedEditor] Step 4 (paint) → ${stepTime.toFixed(1)}ms`);
             if (stepTime > 500) {
@@ -2303,6 +2477,9 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
               const domContext = createRenderedDomContext(pagesContainerRef.current, zoom);
               onRenderedDomContextReady(domContext);
             }
+          } else {
+            pendingScrollRestoreRef.current = null;
+            pendingIncrementalScrollSnapshotWrittenAtRef.current = 0;
           }
 
           // Compute anchor Y positions for comments sidebar (works without DOM queries).
@@ -2338,6 +2515,7 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
 
           // Signal layout is complete — only after we actually painted
           syncCoordinator.onLayoutComplete(currentEpoch);
+          applyPendingIncrementalScrollSnapshot(false);
 
           const totalTime = performance.now() - pipelineStart;
           if (totalTime > 2000) {
@@ -2367,8 +2545,62 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
         document,
         resolvedCommentIds,
         recordLayoutPerf,
+        getScrollContainer,
       ]
     );
+
+    // After `setLayout`, React still commits `totalHeight` / margin on the viewport wrapper.
+    // Restoring scroll here (plus one rAF) matches the committed DOM scrollHeight.
+    useLayoutEffect(() => {
+      const pending = pendingScrollRestoreRef.current;
+      if (!pending) return;
+      pendingScrollRestoreRef.current = null;
+      pendingIncrementalScrollSnapshotWrittenAtRef.current = 0;
+
+      const pagesEl = pagesContainerRef.current;
+      const scrollParent =
+        getScrollContainer() ?? (pagesEl ? findVerticalScrollParentOrRoot(pagesEl) : null);
+      if (!pagesEl || !scrollParent?.isConnected) return;
+
+      const { renderKind, ratio, scrollTopSnapshot, domAnchorPmStart, domAnchorOffsetInScroller } =
+        pending;
+
+      const applyRatio = () => {
+        const maxAfter = Math.max(1, scrollParent.scrollHeight - scrollParent.clientHeight);
+        scrollParent.scrollTop = ratio * maxAfter;
+      };
+
+      const applyIncrementalSnapshot = (): boolean => {
+        if (renderKind !== 'incremental' || scrollTopSnapshot == null) return false;
+        const maxAfter = Math.max(1, scrollParent.scrollHeight - scrollParent.clientHeight);
+        scrollParent.scrollTop = Math.min(Math.max(0, scrollTopSnapshot), maxAfter);
+        return true;
+      };
+
+      const applyScrollRestore = () => {
+        if (applyIncrementalSnapshot()) return;
+        if (renderKind !== 'incremental' && domAnchorPmStart != null) {
+          const el2 = pagesEl.querySelector<HTMLElement>(`[data-pm-start="${domAnchorPmStart}"]`);
+          if (el2) {
+            const sr = scrollParent.getBoundingClientRect();
+            const newOffset = el2.getBoundingClientRect().top - sr.top;
+            scrollParent.scrollTop += domAnchorOffsetInScroller - newOffset;
+            return;
+          }
+        }
+        applyRatio();
+      };
+
+      applyScrollRestore();
+      const rafId = requestAnimationFrame(() => {
+        // After unmount or another layout commit, scrollParent may be detached
+        // — writing scrollTop on a detached element silently no-ops, but is
+        // still a leaked frame's worth of work.
+        if (!scrollParent.isConnected) return;
+        applyScrollRestore();
+      });
+      return () => cancelAnimationFrame(rafId);
+    }, [layout, getScrollContainer]);
 
     // =========================================================================
     // Coalesced Layout (rAF throttle)
@@ -3023,15 +3255,159 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
       return null;
     }, []);
 
-    /** Scroll visible pages to a ProseMirror position */
-    const scrollToPositionImpl = useCallback((pmPos: number) => {
-      const pageContainer = pagesContainerRef.current;
-      if (!pageContainer) return;
-      const targetEl = pageContainer.querySelector(`[data-pm-start="${pmPos}"]`);
-      if (targetEl) {
-        targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
+    /**
+     * AbortController shared by every in-flight scroll's rAF chain. Aborted
+     * on unmount or whenever a new scroll request supersedes the previous
+     * one. Prevents writing scrollTop on a detached scroller, and prevents
+     * a stale paint-settle from clobbering a fresh user-initiated scroll.
+     */
+    const scrollAbortRef = useRef<AbortController | null>(null);
+
+    useEffect(() => {
+      return () => {
+        scrollAbortRef.current?.abort();
+        scrollAbortRef.current = null;
+      };
     }, []);
+
+    /**
+     * Scroll pages to a ProseMirror position (handles virtualization via page shells).
+     * @param forParaIdScroll — when true, use manual container scroll (reliable under CSS
+     *   transform / zoom). Otherwise use `scrollIntoView` (legacy behavior for outline,
+     *   bookmarks, etc.).
+     */
+    const scrollToPositionImpl = useCallback(
+      (pmPos: number, forParaIdScroll = false) => {
+        // Reject malformed input — pmPos must be a non-negative integer.
+        // Without this, a string or float would be interpolated into the
+        // [data-pm-start="..."] selector below and either crash with a
+        // SyntaxError or escape the attribute (selector injection).
+        if (!Number.isInteger(pmPos) || pmPos < 0) return;
+
+        const pages = pagesContainerRef.current;
+        if (!pages) return;
+
+        // Abort any in-flight scroll's rAF chain — its paint-settle would
+        // otherwise stomp on this fresh scroll target a few frames later.
+        scrollAbortRef.current?.abort();
+        const ac = new AbortController();
+        scrollAbortRef.current = ac;
+        const { signal } = ac;
+
+        const queryPaintedStartEl = (): HTMLElement | null =>
+          pages.querySelector(`[data-pm-start="${pmPos}"]`) as HTMLElement | null;
+
+        if (!forParaIdScroll) {
+          // Smooth scroll preserves the legacy UX for outline / bookmark /
+          // hyperlink / find-replace navigation. The paraId path uses an
+          // instant manual scroll instead because smooth fights the layout
+          // restore that runs during virtualized paint.
+          const smoothScroll: ScrollIntoViewOptions = {
+            block: 'center',
+            inline: 'nearest',
+            behavior: 'smooth',
+          };
+          const targetEl = queryPaintedStartEl();
+          if (targetEl) {
+            targetEl.scrollIntoView(smoothScroll);
+            return;
+          }
+          const lay = layout;
+          const blk = blocks;
+          const meas = measures;
+          if (!lay || blk.length === 0 || meas.length !== blk.length) return;
+
+          let pageIndex: number | null = null;
+          const caret = getCaretPosition(lay, blk, meas, pmPos);
+          if (caret) {
+            pageIndex = caret.pageIndex;
+          } else {
+            pageIndex = findPageIndexContainingPmPos(lay, pmPos);
+          }
+          if (pageIndex == null) return;
+
+          const pageShells = pages.querySelectorAll<HTMLElement>('.layout-page');
+          const shell = pageShells[pageIndex];
+          if (!shell) return;
+
+          shell.scrollIntoView(smoothScroll);
+          runAfterPaint(() => {
+            if (!pages.isConnected) return;
+            const painted = queryPaintedStartEl();
+            if (painted) painted.scrollIntoView(smoothScroll);
+          }, signal);
+          return;
+        }
+
+        const scroller = getScrollContainer() ?? findVerticalScrollParentOrRoot(pages);
+
+        const scrollPaintedTargetInstant = (): boolean => {
+          const targetEl = queryPaintedStartEl();
+          if (!targetEl) return false;
+          scrollElementCenterIntoContainer(targetEl, scroller, 'instant');
+          return true;
+        };
+
+        if (scrollPaintedTargetInstant()) return;
+
+        const lay = layout;
+        const blk = blocks;
+        const meas = measures;
+        if (!lay || blk.length === 0 || meas.length !== blk.length) return;
+
+        let pageIndex: number | null = null;
+        const caret = getCaretPosition(lay, blk, meas, pmPos);
+        if (caret) {
+          pageIndex = caret.pageIndex;
+        } else {
+          pageIndex = findPageIndexContainingPmPos(lay, pmPos);
+        }
+        if (pageIndex == null) return;
+
+        const pageShells = pages.querySelectorAll<HTMLElement>('.layout-page');
+        const shell = pageShells[pageIndex];
+        if (!shell) return;
+
+        // Long jump / virtualization: instant only — smooth fights layout/scroll restore.
+        scrollElementCenterIntoContainer(shell, scroller, 'instant');
+
+        runAfterPaint(() => {
+          if (!pages.isConnected) return;
+          const painted = queryPaintedStartEl();
+          if (painted) {
+            scrollElementCenterIntoContainer(painted, scroller, 'instant');
+          } else {
+            scrollPaintedTargetInstant();
+          }
+        }, signal);
+      },
+      [layout, blocks, measures, getScrollContainer]
+    );
+
+    const scrollToParaIdImpl = useCallback(
+      (paraId: string): boolean => {
+        const state = hiddenPMRef.current?.getState();
+        if (!state) return false;
+        const startPos = findStartPosForParaId(state.doc, paraId);
+        if (startPos == null || startPos < 0) return false;
+        scrollToPositionImpl(startPos, true);
+        // Defer selection/focus until after the scroll's paint-settle rAF
+        // chain runs. Setting selection synchronously on a virtualized
+        // (unpainted) target triggers a layout/scroll-restore cycle that
+        // fights the in-flight scroll. Reuses the same AbortController so
+        // a superseding scroll cancels this too.
+        const signal = scrollAbortRef.current?.signal;
+        if (!signal) return true;
+        const inner = Math.min(startPos + 1, state.doc.content.size);
+        runAfterPaint(() => {
+          if (!hiddenPMRef.current) return;
+          hiddenPMRef.current.setSelection(inner);
+          hiddenPMRef.current.focus();
+        }, signal);
+        return true;
+      },
+      [scrollToPositionImpl]
+    );
 
     /**
      * Handle mousedown on pages - start selection or drag.
@@ -4337,8 +4713,9 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
           }
         },
         scrollToPosition: scrollToPositionImpl,
+        scrollToParaId: scrollToParaIdImpl,
       }),
-      [layout, runLayoutPipeline, scrollToPositionImpl]
+      [layout, runLayoutPipeline, scrollToPositionImpl, scrollToParaIdImpl]
     );
 
     // Update selection overlay when layout changes
@@ -4383,9 +4760,10 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
             }
           },
           scrollToPosition: scrollToPositionImpl,
+          scrollToParaId: scrollToParaIdImpl,
         });
       }
-    }, [layout, runLayoutPipeline]);
+    }, [layout, runLayoutPipeline, scrollToParaIdImpl]);
     // NOTE: onReady removed from dependencies - accessed via ref to prevent infinite loops
 
     // =========================================================================
@@ -4427,6 +4805,7 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
 
         {/* Viewport for visible pages */}
         <div
+          ref={viewportLayoutRef}
           style={{
             ...viewportStyles,
             minHeight: totalHeight,
