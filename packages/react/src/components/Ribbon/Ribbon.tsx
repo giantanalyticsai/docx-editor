@@ -9,12 +9,14 @@ import type { TableAction } from '../ui/TableToolbar';
 import type { SectionBreakType } from '../ui/BreaksDropdown';
 import { MaterialSymbol } from '../ui/MaterialSymbol';
 import { useToolbarItems, type RibbonItemModel } from '../toolbarItems';
+import type { FontOption } from '../ui/FontPicker';
 import { ribbonIcons } from './ribbonIcons';
 
 export interface RibbonProps {
   currentFormatting?: SelectionFormatting;
   documentStyles?: Style[];
   theme?: Theme | null;
+  fontFamilies?: ReadonlyArray<string | FontOption>;
   readOnly?: boolean;
   onFormat?: (action: FormattingAction) => void;
   onUndo?: () => void;
@@ -136,6 +138,7 @@ export function Ribbon({
   currentFormatting = {},
   documentStyles,
   theme,
+  fontFamilies,
   readOnly = false,
   onFormat,
   onUndo,
@@ -195,6 +198,7 @@ export function Ribbon({
     currentFormatting,
     documentStyles,
     theme,
+    fontFamilies,
     readOnly,
     onFormat,
     onUndo,

@@ -4716,6 +4716,7 @@ body { background: white; }
                           onRefocusEditor={focusActiveEditor}
                           documentStyles={history.state?.package.styles?.styles}
                           theme={history.state?.package.theme || theme}
+                          fontFamilies={fontFamilies}
                           readOnly={readOnlyProp}
                         />
                       ) : (
