@@ -17,6 +17,7 @@
 
 import { useRef, useEffect, useCallback, useImperativeHandle, forwardRef, memo } from 'react';
 import type { CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import {
   EditorState,
   Transaction,
@@ -386,6 +387,8 @@ const HiddenProseMirrorComponent = forwardRef<HiddenProseMirrorRef, HiddenProseM
         handleKeyDown: (view: EditorView, event: KeyboardEvent): boolean => {
           return onKeyDownRef.current?.(view, event) ?? false;
         },
+        // Paginated layer owns scroll; never let PM scroll the viewport / ancestors.
+        handleScrollToSelection: () => true,
         // Prevent focus handling from interfering with visual layer
         handleDOMEvents: {
           focus: () => {
@@ -588,7 +591,7 @@ const HiddenProseMirrorComponent = forwardRef<HiddenProseMirrorRef, HiddenProseM
     // Render
     // ========================================================================
 
-    return (
+    const host = (
       <div
         ref={hostRef}
         className="paged-editor__hidden-pm"
@@ -599,6 +602,15 @@ const HiddenProseMirrorComponent = forwardRef<HiddenProseMirrorRef, HiddenProseM
         // DO NOT set aria-hidden - this editor provides semantic structure
       />
     );
+
+    // Mount off-DOM from the paginated scroll container. Otherwise ProseMirror's
+    // preserve-mode selection updates (storeScrollPos / resetScrollStack) walk
+    // ancestors and can clobber the document scroller — e.g. ArrowLeft after
+    // scrollToParaId. See prosemirror-view updateStateInner (scroll === "preserve").
+    const browserDoc = globalThis.document;
+    const portalTarget =
+      browserDoc && 'body' in browserDoc && browserDoc.body != null ? browserDoc.body : null;
+    return portalTarget ? createPortal(host, portalTarget) : host;
   }
 );
 
