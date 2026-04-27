@@ -1,6 +1,5 @@
 ---
 '@giantanalyticsai/docx-js-editor': minor
-'@giantanalyticsai/docx-editor-agents': minor
 ---
 
 Add `fontFamilies` prop to `DocxEditor` to customize the toolbar's font dropdown.
