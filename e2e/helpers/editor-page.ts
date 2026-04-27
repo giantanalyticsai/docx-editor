@@ -894,22 +894,6 @@ export class EditorPage {
     ]);
   }
 
-  /**
-   * Apply last used text color via split main button
-   */
-  async applyLastTextColor(): Promise<void> {
-    await this.toolbar.locator('[data-testid="toolbar-textColor-apply"]').click();
-    await this.focus();
-  }
-
-  /**
-   * Apply last used highlight color via split main button
-   */
-  async applyLastHighlightColor(): Promise<void> {
-    await this.toolbar.locator('[data-testid="toolbar-highlightColor-apply"]').click();
-    await this.focus();
-  }
-
   // ============================================================================
   // ALIGNMENT & LISTS
   // ============================================================================
