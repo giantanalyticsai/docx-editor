@@ -291,6 +291,11 @@ export function hashParagraphBlock(block: ParagraphBlock): string {
         `spacing:${attrs.spacing.before}|${attrs.spacing.after}|${attrs.spacing.line}|${attrs.spacing.lineRule}`
       );
     }
+    // Default font drives line height for empty paragraphs (no runs to hash).
+    // Without this, empty paragraphs collide regardless of font choice and the
+    // caret renders at the previously cached size until typing forces a re-key.
+    if (attrs.defaultFontSize != null) parts.push(`dfs:${attrs.defaultFontSize}`);
+    if (attrs.defaultFontFamily != null) parts.push(`dff:${attrs.defaultFontFamily}`);
   }
 
   return parts.join('||');

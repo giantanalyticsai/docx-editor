@@ -17,6 +17,7 @@
 
 import { useRef, useEffect, useCallback, useImperativeHandle, forwardRef, memo } from 'react';
 import type { CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import {
   EditorState,
   Transaction,
@@ -28,7 +29,6 @@ import {
 import { CellSelection } from 'prosemirror-tables';
 import { EditorView, type DirectEditorProps } from 'prosemirror-view';
 import { undo, redo } from 'prosemirror-history';
-
 import { schema } from '@giantanalyticsai/docx-core/prosemirror/schema';
 import { toProseDoc, createEmptyDoc } from '@giantanalyticsai/docx-core/prosemirror/conversion';
 import { fromProseDoc } from '@giantanalyticsai/docx-core/prosemirror/conversion/fromProseDoc';
@@ -39,6 +39,36 @@ import { PERF_ENABLED } from '../utils/perfFlags';
 // Import ProseMirror CSS
 import 'prosemirror-view/style/prosemirror.css';
 import '@giantanalyticsai/docx-core/prosemirror/editor.css';
+
+/**
+ * `Transaction.updated` is an internal bitfield in `prosemirror-state` whose
+ * `UPDATED_SCROLL` flag is not exported. Bit value is 4 in current PM
+ * (state/src/transaction.ts). We strip it because the paginated layer owns
+ * scroll — without this PM's `updateState` would force-scroll our hidden
+ * off-screen view's ancestors.
+ *
+ * If a future PM release adds new flag bits before SCROLL, this constant
+ * goes stale silently. The `assertScrollFlagShape()` runtime check below
+ * is a one-shot canary: it dispatches a synthetic scrollIntoView() tr and
+ * asserts the bit shape matches expectations. Failures get logged once.
+ */
+const PM_UPDATED_SCROLL = 4;
+let pmScrollFlagAsserted = false;
+function assertScrollFlagShape(emptyTr: Transaction): void {
+  if (pmScrollFlagAsserted) return;
+  pmScrollFlagAsserted = true;
+  try {
+    const probe = emptyTr.scrollIntoView() as unknown as { updated?: number };
+    if (typeof probe.updated !== 'number' || (probe.updated & PM_UPDATED_SCROLL) === 0) {
+      console.warn(
+        '[HiddenProseMirror] prosemirror-state UPDATED_SCROLL bit shape changed; ' +
+          'paginated scroll suppression may be stale. Update PM_UPDATED_SCROLL.'
+      );
+    }
+  } catch {
+    // Probe failed (e.g. PM mocked in tests) — skip silently.
+  }
+}
 
 // ============================================================================
 // TYPES
@@ -272,6 +302,10 @@ const HiddenProseMirrorComponent = forwardRef<HiddenProseMirrorRef, HiddenProseM
       const editorProps: DirectEditorProps = {
         state: initialState,
         editable: () => !readOnly,
+        // Keeps `overflow-anchor` on the PM root across outer-deco sync (prosemirror#933).
+        attributes: {
+          style: 'overflow-anchor: none',
+        },
         // Use a regular function (not arrow) so ProseMirror's `.call(this, tr)`
         // binding gives us the EditorView. This is critical: plugins like ySyncPlugin
         // dispatch transactions during EditorView construction (in their `view()`
@@ -282,6 +316,18 @@ const HiddenProseMirrorComponent = forwardRef<HiddenProseMirrorRef, HiddenProseM
           // Ensure viewRef is set — may be called during construction before
           // the `new EditorView()` assignment on the next line completes.
           if (!viewRef.current) viewRef.current = this;
+
+          // Paginated layer owns scroll; strip PM scroll flag so updateState does not
+          // use scroll-to-selection / preserve-path ancestor scroll correction on our scroller.
+          // Probe a fresh tr (this.state.tr is a getter — doesn't mutate state) once
+          // to verify the PM internal flag shape still matches PM_UPDATED_SCROLL.
+          assertScrollFlagShape(this.state.tr);
+          // `updated` is `private` on PM's Transaction, so a plain intersection
+          // collapses to `never`. The double-cast is the documented escape hatch.
+          const trWithUpdated = transaction as unknown as { updated?: number };
+          if (typeof trWithUpdated.updated === 'number') {
+            trWithUpdated.updated &= ~PM_UPDATED_SCROLL;
+          }
 
           const perfEnabled =
             PERF_ENABLED &&
@@ -341,6 +387,8 @@ const HiddenProseMirrorComponent = forwardRef<HiddenProseMirrorRef, HiddenProseM
         handleKeyDown: (view: EditorView, event: KeyboardEvent): boolean => {
           return onKeyDownRef.current?.(view, event) ?? false;
         },
+        // Paginated layer owns scroll; never let PM scroll the viewport / ancestors.
+        handleScrollToSelection: () => true,
         // Prevent focus handling from interfering with visual layer
         handleDOMEvents: {
           focus: () => {
@@ -355,6 +403,11 @@ const HiddenProseMirrorComponent = forwardRef<HiddenProseMirrorRef, HiddenProseM
       };
 
       viewRef.current = new EditorView(hostRef.current, editorProps);
+      const pmRoot = viewRef.current.dom as HTMLElement;
+      // overflow-anchor is also set via the `attributes.style` prop above to
+      // survive PM's outer-deco sync (prosemirror#933). Setting it directly
+      // on the element covers the brief window before that path applies.
+      pmRoot.style.overflowAnchor = 'none';
 
       // Mark as initialized so the document-change effect skips the redundant
       // first-mount updateState (createView already set the initial state).
@@ -538,7 +591,7 @@ const HiddenProseMirrorComponent = forwardRef<HiddenProseMirrorRef, HiddenProseM
     // Render
     // ========================================================================
 
-    return (
+    const host = (
       <div
         ref={hostRef}
         className="paged-editor__hidden-pm"
@@ -549,6 +602,15 @@ const HiddenProseMirrorComponent = forwardRef<HiddenProseMirrorRef, HiddenProseM
         // DO NOT set aria-hidden - this editor provides semantic structure
       />
     );
+
+    // Mount off-DOM from the paginated scroll container. Otherwise ProseMirror's
+    // preserve-mode selection updates (storeScrollPos / resetScrollStack) walk
+    // ancestors and can clobber the document scroller — e.g. ArrowLeft after
+    // scrollToParaId. See prosemirror-view updateStateInner (scroll === "preserve").
+    const browserDoc = globalThis.document;
+    const portalTarget =
+      browserDoc && 'body' in browserDoc && browserDoc.body != null ? browserDoc.body : null;
+    return portalTarget ? createPortal(host, portalTarget) : host;
   }
 );
 

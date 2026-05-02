@@ -9,10 +9,11 @@ import React, { useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from '../i18n';
 import type { ReactNode } from 'react';
 import type { ColorValue, ParagraphAlignment } from '@giantanalyticsai/docx-core/types/document';
-import { resolveColor } from '@giantanalyticsai/docx-core/utils/colorResolver';
+import { resolveColorToHex } from '@giantanalyticsai/docx-core/utils/colorResolver';
 import { FontPicker } from './ui/FontPicker';
+import { normalizeFontFamilies } from './ui/normalizeFontFamilies';
 import { FontSizePicker, halfPointsToPoints } from './ui/FontSizePicker';
-import { AdvancedColorPicker } from './ui/AdvancedColorPicker';
+import { ColorPicker } from './ui/ColorPicker';
 import { AlignmentButtons } from './ui/AlignmentButtons';
 import { ListButtons, createDefaultListState } from './ui/ListButtons';
 import { LineSpacingPicker } from './ui/LineSpacingPicker';
@@ -85,6 +86,7 @@ export function FormattingBar(explicitProps: FormattingBarProps) {
     editorRef,
     children,
     showFontPicker = true,
+    fontFamilies,
     showFontSizePicker = true,
     showTextColorPicker = true,
     showHighlightColorPicker = true,
@@ -141,6 +143,8 @@ export function FormattingBar(explicitProps: FormattingBarProps) {
     },
     [disabled, onFormat, onRefocusEditor]
   );
+
+  const normalizedFonts = React.useMemo(() => normalizeFontFamilies(fontFamilies), [fontFamilies]);
 
   const handleFontSizeChange = useCallback(
     (sizeInPoints: number) => {
@@ -412,6 +416,7 @@ export function FormattingBar(explicitProps: FormattingBarProps) {
             <FontPicker
               value={currentFormatting.fontFamily || 'Arial'}
               onChange={handleFontFamilyChange}
+              fonts={normalizedFonts}
               disabled={disabled}
               width={60}
               placeholder="Arial"
@@ -472,7 +477,7 @@ export function FormattingBar(explicitProps: FormattingBarProps) {
           <MaterialSymbol name="strikethrough_s" size={ICON_SIZE} />
         </ToolbarButton>
         {showTextColorPicker && (
-          <AdvancedColorPicker
+          <ColorPicker
             mode="text"
             value={currentFormatting.color?.replace(/^#/, '')}
             onChange={handleTextColorChange}
@@ -482,7 +487,7 @@ export function FormattingBar(explicitProps: FormattingBarProps) {
           />
         )}
         {showHighlightColorPicker && (
-          <AdvancedColorPicker
+          <ColorPicker
             mode="highlight"
             value={currentFormatting.highlight}
             onChange={handleHighlightColorChange}
@@ -592,11 +597,7 @@ export function FormattingBar(explicitProps: FormattingBarProps) {
             onAction={handleTableAction}
             disabled={disabled}
             theme={theme}
-            value={
-              tableContext?.cellBorderColor
-                ? resolveColor(tableContext.cellBorderColor, theme).replace(/^#/, '')
-                : undefined
-            }
+            value={resolveColorToHex(tableContext?.cellBorderColor, theme)}
           />
           <TableBorderWidthPicker onAction={handleTableAction} disabled={disabled} />
           <TableCellFillPicker

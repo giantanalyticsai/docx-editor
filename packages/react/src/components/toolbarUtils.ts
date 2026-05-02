@@ -8,7 +8,9 @@
 import type {
   TextFormatting,
   ParagraphFormatting,
+  Theme,
 } from '@giantanalyticsai/docx-core/types/document';
+import { resolveColorToHex } from '@giantanalyticsai/docx-core/utils/colorResolver';
 import { pointsToHalfPoints } from './ui/FontSizePicker';
 import { createDefaultListState } from './ui/ListButtons';
 import type { SelectionFormatting, FormattingAction } from './toolbarTypes';
@@ -54,7 +56,8 @@ export function mapHexToHighlightName(hex: string): string | null {
  */
 export function getSelectionFormatting(
   formatting?: Partial<TextFormatting>,
-  paragraphFormatting?: Partial<ParagraphFormatting>
+  paragraphFormatting?: Partial<ParagraphFormatting>,
+  theme?: Theme | null
 ): SelectionFormatting {
   const result: SelectionFormatting = {};
 
@@ -68,7 +71,8 @@ export function getSelectionFormatting(
     result.subscript = formatting.vertAlign === 'subscript';
     result.fontFamily = formatting.fontFamily?.ascii || formatting.fontFamily?.hAnsi;
     result.fontSize = formatting.fontSize;
-    result.color = formatting.color?.rgb ? `#${formatting.color.rgb}` : undefined;
+    const colorHex = resolveColorToHex(formatting.color, theme);
+    result.color = colorHex ? `#${colorHex}` : undefined;
     result.highlight = formatting.highlight !== 'none' ? formatting.highlight : undefined;
   }
 

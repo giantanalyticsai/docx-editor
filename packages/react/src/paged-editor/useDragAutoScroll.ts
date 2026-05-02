@@ -7,6 +7,7 @@
  */
 
 import { useCallback, useRef } from 'react';
+import { findVerticalScrollParent } from './findVerticalScrollParent';
 
 /** Pixel distance from container edge where auto-scroll activates. */
 const EDGE_ZONE = 40;
@@ -18,24 +19,6 @@ export interface DragAutoScrollOptions {
   pagesContainerRef: React.RefObject<HTMLDivElement | null>;
   /** Called during auto-scroll to extend the selection at the current mouse position. */
   onScrollExtendSelection: (clientX: number, clientY: number) => void;
-}
-
-/**
- * Find the nearest scrollable ancestor.
- */
-function findScrollParent(el: HTMLElement): HTMLElement | null {
-  let parent = el.parentElement;
-  while (parent && parent !== document.documentElement) {
-    const { overflowY } = getComputedStyle(parent);
-    if (
-      (overflowY === 'auto' || overflowY === 'scroll') &&
-      parent.scrollHeight > parent.clientHeight
-    ) {
-      return parent;
-    }
-    parent = parent.parentElement;
-  }
-  return null;
 }
 
 export function useDragAutoScroll({
@@ -51,7 +34,7 @@ export function useDragAutoScroll({
     if (scrollParentRef.current) return scrollParentRef.current;
     const pages = pagesContainerRef.current;
     if (!pages) return null;
-    scrollParentRef.current = findScrollParent(pages);
+    scrollParentRef.current = findVerticalScrollParent(pages);
     return scrollParentRef.current;
   }, [pagesContainerRef]);
 

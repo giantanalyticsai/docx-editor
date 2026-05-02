@@ -31,6 +31,7 @@ import type {
 import defaultLocale from '../../i18n/en.json';
 
 import { Toolbar, ToolbarButton, ToolbarGroup } from './Toolbar';
+import type { FontOption } from './ui/FontPicker';
 import type { SelectionFormatting, FormattingAction } from './toolbarTypes';
 import { RibbonToolbar } from './Ribbon';
 import { EditorToolbar } from './EditorToolbar';
@@ -127,7 +128,7 @@ import { DefaultLoadingIndicator, DefaultPlaceholder, ParseError } from './DocxE
 import { parseDocx } from '@giantanalyticsai/docx-core/docx/parser';
 import { type DocxInput } from '@giantanalyticsai/docx-core/utils/docxInput';
 import { onFontsLoaded, loadDocumentFonts } from '@giantanalyticsai/docx-core/utils/fontLoader';
-import { resolveColor } from '@giantanalyticsai/docx-core/utils/colorResolver';
+import { resolveColorToHex } from '@giantanalyticsai/docx-core/utils/colorResolver';
 import { twipsToPixels } from '@giantanalyticsai/docx-core/utils/units';
 import { executeCommand } from '@giantanalyticsai/docx-core/agent/executor';
 import { useTableSelection } from '../hooks/useTableSelection';
@@ -338,6 +339,19 @@ export interface DocxEditorProps {
   showOutline?: boolean;
   /** Whether to show the floating outline toggle button (default: true) */
   showOutlineButton?: boolean;
+  /**
+   * Custom list of fonts shown in the toolbar's font-family dropdown.
+   * Strings render in the "Other" group; pass `FontOption[]` for category
+   * grouping and CSS fallback chains. Omit to use the built-in 12-font
+   * default. An empty array renders an empty (but enabled) dropdown.
+   *
+   * Pass a stable reference (memoized or module-level) — inline arrays
+   * create a new identity per render and invalidate the picker's memo.
+   *
+   * @example fontFamilies={['Arial', 'Roboto']}
+   * @example fontFamilies={[{ name: 'Roboto', fontFamily: 'Roboto, sans-serif', category: 'sans-serif' }]}
+   */
+  fontFamilies?: ReadonlyArray<string | FontOption>;
   /** Whether to show print button in toolbar (default: true) */
   showPrintButton?: boolean;
   /** Print options for print preview */
@@ -420,8 +434,26 @@ export interface DocxEditorRef {
   getCurrentPage: () => number;
   /** Get total page count */
   getTotalPages: () => number;
-  /** Scroll to a specific page */
+  /**
+   * Scroll the paginated view so the given page is in view.
+   * Page numbers are 1-indexed (matches `getCurrentPage` / `getTotalPages`).
+   * No-op for out-of-range or non-integer values.
+   * @example ref.current?.scrollToPage(2)
+   */
   scrollToPage: (pageNumber: number) => void;
+  /**
+   * Scroll the paginated view to the paragraph with the given Word `w14:paraId`.
+   * @returns whether a matching paragraph exists in the ProseMirror document
+   * @example ref.current?.scrollToParaId('1A2B3C4D')
+   */
+  scrollToParaId: (paraId: string) => boolean;
+  /**
+   * Scroll the paginated view to a specific ProseMirror document position.
+   * Use this when you have a raw PM offset; for Word `w14:paraId` use
+   * `scrollToParaId` instead.
+   * @example ref.current?.scrollToPosition(42)
+   */
+  scrollToPosition: (pmPos: number) => void;
   /** Open print preview */
   openPrintPreview: () => void;
   /** Print the document directly */
@@ -812,6 +844,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     loadingIndicator,
     showOutline: showOutlineProp = false,
     showOutlineButton = true,
+    fontFamilies,
     showPrintButton = true,
     printOptions: _printOptions,
     onPrint,
@@ -950,6 +983,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const hasTitleBar =
     !!renderLogo || documentName !== undefined || renderTitleBarRight !== undefined;
   const useEditorToolbar = !isRibbon && hasTitleBar;
+  // Accessed by the stable recomputeFloatingCommentBtn callback below.
+  // Kept in sync below after that callback is declared.
   // Floating "add comment" button position (relative to scroll container, null = hidden)
   const [floatingCommentBtn, setFloatingCommentBtn] = useState<{
     top: number;
@@ -1714,6 +1749,63 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     ]
   );
 
+  // Recompute the floating "add comment" button position from the current PM
+  // selection + page/container geometry. Called from handleSelectionChange and
+  // from the geometry-change effects below (resize, zoom), because PagedEditor's
+  // onSelectionChange no longer fires on mere overlay redraws after the
+  // state-identity dedup in #268.
+  const readOnlyForFloatingBtnRef = useRef(false);
+  const recomputeFloatingCommentBtn = useCallback(() => {
+    const view = pagedEditorRef.current?.getView();
+    if (!view) return;
+    if (isAddingCommentRef.current || readOnlyForFloatingBtnRef.current) {
+      setFloatingCommentBtn(null);
+      return;
+    }
+    const { from, to } = view.state.selection;
+    if (from === to) {
+      setFloatingCommentBtn(null);
+      return;
+    }
+    const container = scrollContainerRef.current;
+    const parentEl = editorContentRef.current;
+    if (!container || !parentEl) return;
+    const top = findSelectionYPosition(container, parentEl, from);
+    if (top == null) return;
+    const pagesEl = container.querySelector('.paged-editor__pages');
+    const pageEl = pagesEl?.querySelector('.layout-page') as HTMLElement | null;
+    const left = pageEl
+      ? pageEl.getBoundingClientRect().right - parentEl.getBoundingClientRect().left
+      : parentEl.getBoundingClientRect().width / 2 + 408;
+    setFloatingCommentBtn({ top, left });
+  }, []);
+  // Keep the readOnly ref used by recomputeFloatingCommentBtn in sync
+  readOnlyForFloatingBtnRef.current = readOnly;
+
+  // Reposition the floating "add comment" button when the editor container
+  // resizes (window resize, sidebar toggle, loading→ready transition) or when
+  // zoom changes. Both move the page edges without changing PM selection, so
+  // the onSelectionChange path no longer covers them after the dedup fix in
+  // #268. The scroll container may not be mounted on the first render (loading
+  // state renders a different subtree), so re-run the effect whenever that
+  // state flips — that's the point at which the container first becomes
+  // available.
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const ro = new ResizeObserver(() => recomputeFloatingCommentBtn());
+    ro.observe(container);
+    const onWinResize = () => recomputeFloatingCommentBtn();
+    window.addEventListener('resize', onWinResize);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', onWinResize);
+    };
+  }, [state.isLoading, recomputeFloatingCommentBtn]);
+  useEffect(() => {
+    recomputeFloatingCommentBtn();
+  }, [state.zoom, recomputeFloatingCommentBtn]);
+
   // Handle selection changes from ProseMirror
   const handleSelectionChange = useCallback(
     (selectionState: SelectionState | null) => {
@@ -1737,17 +1829,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
 
       // Sync borderSpecRef with the current cell's actual border color
       if (pmTableCtx?.cellBorderColor) {
-        const colorVal = pmTableCtx.cellBorderColor;
-        // Resolve theme/auto colors to hex
-        let rgb = colorVal.rgb;
-        if (!rgb || rgb === 'auto') {
-          const resolved = resolveColor(colorVal, theme);
-          rgb = resolved.replace(/^#/, '');
+        const rgb = resolveColorToHex(pmTableCtx.cellBorderColor, theme);
+        if (rgb) {
+          borderSpecRef.current = { ...borderSpecRef.current, color: { rgb } };
         }
-        borderSpecRef.current = {
-          ...borderSpecRef.current,
-          color: { rgb },
-        };
       }
 
       // Check if cursor is on an image (NodeSelection)
@@ -1832,8 +1917,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         }
       }
 
-      // Extract text color as hex string
-      const textColor = textFormatting.color?.rgb ? `#${textFormatting.color.rgb}` : undefined;
+      const textColorHex = resolveColorToHex(textFormatting.color, theme);
+      const textColor = textColorHex ? `#${textColorHex}` : undefined;
 
       // Build list state from numPr
       const numPr = paragraphFormatting.numPr;
@@ -1883,22 +1968,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       }));
 
       // Update floating comment button position
-      if (view && selectionState.hasSelection && !isAddingComment && !readOnly) {
-        const container = scrollContainerRef.current;
-        const parentEl = editorContentRef.current;
-        const { from: selFrom } = view.state.selection;
-        const top = findSelectionYPosition(container, parentEl, selFrom);
-        if (top != null && container && parentEl) {
-          const pagesEl = container.querySelector('.paged-editor__pages');
-          const pageEl = pagesEl?.querySelector('.layout-page') as HTMLElement | null;
-          const left = pageEl
-            ? pageEl.getBoundingClientRect().right - parentEl.getBoundingClientRect().left
-            : parentEl.getBoundingClientRect().width / 2 + 408;
-          setFloatingCommentBtn({ top, left });
-        }
-      } else {
-        setFloatingCommentBtn(null);
-      }
+      recomputeFloatingCommentBtn();
 
       // Notify parent
       onSelectionChange?.(selectionState);
@@ -3836,10 +3906,14 @@ body { background: white; }
       focus: () => {
         pagedEditorRef.current?.focus();
       },
-      getCurrentPage: () => state.currentPage,
-      getTotalPages: () => state.totalPages,
-      scrollToPage: (_pageNumber: number) => {
-        // TODO: Implement page navigation in ProseMirror
+      getCurrentPage: () => scrollPageInfo.currentPage,
+      getTotalPages: () => scrollPageInfo.totalPages,
+      scrollToPage: (pageNumber: number) => {
+        pagedEditorRef.current?.scrollToPage(pageNumber);
+      },
+      scrollToParaId: (paraId: string) => pagedEditorRef.current?.scrollToParaId(paraId) ?? false,
+      scrollToPosition: (pmPos: number) => {
+        pagedEditorRef.current?.scrollToPosition(pmPos);
       },
       openPrintPreview: handleDirectPrint,
       print: handleDirectPrint,
@@ -4055,11 +4129,31 @@ body { background: white; }
       const existingRefs = sectionProps[refKey] ?? [];
       const newRef = { type: hdrFtrType as 'default' | 'first', rId };
 
+      // Register the rel so the serializer wires up content types + doc rels (#274).
+      const existingRels = pkg.relationships;
+      const usedTargets = new Set<string>();
+      for (const rel of existingRels?.values() ?? []) {
+        if (rel.target) usedTargets.add(rel.target);
+      }
+      let targetNum = 1;
+      while (usedTargets.has(`${position}${targetNum}.xml`)) targetNum++;
+      const relType =
+        position === 'header'
+          ? 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/header'
+          : 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer';
+      const newRelationships = new Map(existingRels);
+      newRelationships.set(rId, {
+        id: rId,
+        type: relType,
+        target: `${position}${targetNum}.xml`,
+      });
+
       const newDoc: Document = {
         ...history.state,
         package: {
           ...pkg,
           [mapKey]: newMap,
+          relationships: newRelationships,
           document: pkg.document
             ? {
                 ...pkg.document,
@@ -4236,6 +4330,13 @@ body { background: white; }
     onCommentResolve: (id) => {
       const target = comments.find((c) => c.id === id);
       setComments((prev) => prev.map((c) => (c.id === id ? { ...c, done: true } : c)));
+      // Collapse the card to its checkmark marker immediately. Resolving
+      // doesn't go through a PM transaction, so the cursor-based collapse
+      // path wouldn't fire; do it explicitly. Cascades into the highlight
+      // hide via resolvedIdsForRender.
+      if (expandedSidebarItem === `comment-${id}`) {
+        setExpandedSidebarItem(null);
+      }
       if (target) onCommentResolve?.({ ...target, done: true });
     },
     onCommentUnresolve: (id) => {
@@ -4379,6 +4480,7 @@ body { background: white; }
     minWidth: 0, // Allow flex item to shrink below content width on narrow viewports
     overflow: 'auto', // This is the scroll container - sticky toolbar will stick to this
     position: 'relative',
+    overflowAnchor: 'none',
   };
 
   // Render loading state
@@ -4433,7 +4535,12 @@ body { background: white; }
           <MaterialSymbol name="add_comment" size={18} />
         </ToolbarButton>
         <ToolbarButton
-          onClick={() => setShowCommentsSidebar(!showCommentsSidebar)}
+          onClick={() => {
+            // Also reset expansion so reshowing the sidebar lands on the default
+            // collapsed state — resolved threads stay as checkmarks, not opened.
+            setShowCommentsSidebar((v) => !v);
+            setExpandedSidebarItem(null);
+          }}
           active={showCommentsSidebar}
           title="Toggle comments sidebar"
           ariaLabel="Toggle comments sidebar"
@@ -4609,6 +4716,7 @@ body { background: white; }
                           onRefocusEditor={focusActiveEditor}
                           documentStyles={history.state?.package.styles?.styles}
                           theme={history.state?.package.theme || theme}
+                          fontFamilies={fontFamilies}
                           readOnly={readOnlyProp}
                         />
                       ) : (
@@ -4677,6 +4785,7 @@ body { background: white; }
                               documentStyles={history.state?.package.styles?.styles}
                               theme={history.state?.package.theme || theme}
                               showPrintButton={showPrintButton}
+                              fontFamilies={fontFamilies}
                               onPrint={handleDirectPrint}
                               showZoomControl={showZoomControl}
                               zoom={state.zoom}
@@ -4740,6 +4849,21 @@ body { background: white; }
                     style={editorContainerStyle}
                     ref={scrollContainerRef}
                     data-testid="editor-scroll"
+                    onMouseDown={(e) => {
+                      // Click in the grey gutter around the page → collapse any
+                      // expanded sidebar card. Clicks on the doc body already
+                      // collapse via the cursor-mark detector; clicks inside the
+                      // sidebar are user interactions with the card itself.
+                      const target = e.target as HTMLElement;
+                      if (
+                        target.closest('.paged-editor__pages') ||
+                        target.closest('.docx-unified-sidebar') ||
+                        target.closest('.docx-comment-margin-markers')
+                      ) {
+                        return;
+                      }
+                      setExpandedSidebarItem(null);
+                    }}
                   >
                     {/* Editor content wrapper */}
                     <div style={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative' }}>
@@ -4834,7 +4958,13 @@ body { background: white; }
                               let cursorSidebarItem: string | null = null;
                               for (const mark of marks) {
                                 if (mark.type.name === 'comment' && mark.attrs.commentId != null) {
-                                  cursorSidebarItem = `comment-${mark.attrs.commentId}`;
+                                  // Skip resolved comments — they stay collapsed as a checkmark
+                                  // marker unless the user explicitly clicks it. Otherwise the
+                                  // sidebar fills up with old threads every time the cursor
+                                  // passes through commented text.
+                                  const commentId = mark.attrs.commentId as number;
+                                  if (resolvedCommentIds.has(commentId)) continue;
+                                  cursorSidebarItem = `comment-${commentId}`;
                                   break;
                                 }
                                 if (
@@ -4879,6 +5009,11 @@ body { background: white; }
                           onContextMenu={handleContextMenu}
                           commentsSidebarOpen={sidebarOpen}
                           onAnchorPositionsChange={setAnchorPositions}
+                          onTotalPagesChange={(totalPages) => {
+                            setScrollPageInfo((prev) =>
+                              prev.totalPages === totalPages ? prev : { ...prev, totalPages }
+                            );
+                          }}
                           resolvedCommentIds={resolvedIdsForRender}
                           scrollContainerRef={scrollContainerRef}
                           sidebarOverlay={

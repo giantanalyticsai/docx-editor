@@ -267,6 +267,7 @@ const paragraphNodeSpec: NodeSpec = {
     listMarkerHidden: { default: null },
     listMarkerFontFamily: { default: null },
     listMarkerFontSize: { default: null },
+    listLevelNumFmts: { default: null },
     styleId: { default: null },
     borders: { default: null },
     shading: { default: null },
@@ -302,12 +303,27 @@ const paragraphNodeSpec: NodeSpec = {
         // (covers paste from Google Docs, Word Online, and other external apps)
         const styleAttrs = extractParagraphAttrsFromStyle(element);
 
+        // List paragraphs from external paste (Word mso-list, see
+        // PasteStyleInlinerExtension.reconstructWordLists). The schema has no
+        // list node — list state lives on the paragraph as numPr.{numId,ilvl}.
+        const numIdAttr = element.dataset.numId;
+        const numPr =
+          numIdAttr != null
+            ? {
+                numId: parseInt(numIdAttr, 10),
+                ilvl: parseInt(element.dataset.numIlvl ?? '0', 10),
+              }
+            : undefined;
+        const listIsBullet = element.dataset.listIsBullet === 'true' ? true : undefined;
+
         // Merge: data-attributes take precedence over CSS-extracted values
         return {
           ...styleAttrs,
           ...attrs,
           // For alignment, prefer data-attribute if present, otherwise use CSS
           alignment: attrs.alignment || styleAttrs.alignment || undefined,
+          ...(numPr ? { numPr } : {}),
+          ...(listIsBullet !== undefined ? { listIsBullet } : {}),
         };
       },
     },

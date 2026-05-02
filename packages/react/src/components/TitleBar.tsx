@@ -17,6 +17,7 @@ import { ToolbarTabs } from './ToolbarTabs';
 import { useEditorToolbar } from './EditorToolbarContext';
 import type { FormattingAction } from './Toolbar';
 import { useTranslation } from '../i18n';
+import { openReportIssue } from './reportIssue';
 
 // ============================================================================
 // Default Doc Icon (shown when no Logo is provided)
@@ -233,6 +234,18 @@ export function MenuBar() {
             onClick: onInsertTOC,
             disabled: !onInsertTOC,
           },
+        ]}
+      />
+
+      {/* Help Menu */}
+      <MenuDropdown
+        label={t('toolbar.help')}
+        disabled={disabled}
+        items={[
+          {
+            label: t('toolbar.reportIssue'),
+            onClick: () => openReportIssue(),
+          } as MenuEntry,
         ]}
       />
     </div>

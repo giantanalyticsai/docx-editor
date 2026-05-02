@@ -13,7 +13,8 @@ import type { TableContextInfo } from '@giantanalyticsai/docx-core/prosemirror';
 import type { FormattingAction, SelectionFormatting } from './toolbarTypes';
 import type { EditorMode } from './ui/EditingModeDropdown';
 import type { TableAction } from './ui/TableToolbar';
-import { FontPicker } from './ui/FontPicker';
+import { FontPicker, type FontOption } from './ui/FontPicker';
+import { normalizeFontFamilies } from './ui/normalizeFontFamilies';
 import { FontSizePicker, halfPointsToPoints } from './ui/FontSizePicker';
 import { AdvancedColorPicker } from './ui/AdvancedColorPicker';
 import { AlignmentButtons } from './ui/AlignmentButtons';
@@ -133,6 +134,7 @@ export interface UseToolbarItemsOptions {
   currentFormatting?: SelectionFormatting;
   documentStyles?: Style[];
   theme?: Theme | null;
+  fontFamilies?: ReadonlyArray<string | FontOption>;
   disabled?: boolean;
   canUndo?: boolean;
   canRedo?: boolean;
@@ -220,6 +222,7 @@ export function useToolbarItems(options: UseToolbarItemsOptions): {
     currentFormatting = {},
     documentStyles,
     theme,
+    fontFamilies,
     disabled = false,
     canUndo = false,
     canRedo = false,
@@ -384,6 +387,8 @@ export function useToolbarItems(options: UseToolbarItemsOptions): {
     },
     [disabled, onFormat, refocusEditor]
   );
+
+  const normalizedFonts = useMemo(() => normalizeFontFamilies(fontFamilies), [fontFamilies]);
 
   const fontSizeChange = useCallback(
     (sizeInPoints: number) => {
@@ -665,6 +670,7 @@ export function useToolbarItems(options: UseToolbarItemsOptions): {
           <FontPicker
             value={currentFormatting.fontFamily || 'Arial'}
             onChange={fontFamilyChange}
+            fonts={normalizedFonts}
             disabled={disabled}
             width={70}
             placeholder="Arial"
@@ -1242,6 +1248,7 @@ export function useToolbarItems(options: UseToolbarItemsOptions): {
               key={key}
               value={currentFormatting.fontFamily || 'Arial'}
               onChange={fontFamilyChange}
+              fonts={normalizedFonts}
               disabled={isReadOnly}
               width={100}
               placeholder="Arial"

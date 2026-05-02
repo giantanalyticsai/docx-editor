@@ -62,6 +62,12 @@ export interface ParagraphAttrs {
   listMarkerFontFamily?: string;
   /** Marker font size from numbering level rPr, in points */
   listMarkerFontSize?: number;
+  /**
+   * NumberFormat for each level 0..ilvl (inclusive).
+   * Lets toFlowBlocks resolve multi-level templates like "%1.%2." with
+   * the correct format per token.
+   */
+  listLevelNumFmts?: NumberFormat[];
 
   // Style reference
   styleId?: string;
@@ -238,4 +244,11 @@ export interface TableCellAttrs {
   margins?: { top?: number; bottom?: number; left?: number; right?: number };
   /** Original cell formatting from DOCX for lossless round-trip serialization */
   _originalFormatting?: TableCellFormatting;
+  /**
+   * The resolved hex of the original `shading.fill` at parse time. Used by
+   * fromProseDoc to detect whether the user changed `backgroundColor`: if they
+   * didn't, we preserve `_originalFormatting.shading` (keeping themeFill +
+   * tint/shade); if they did, we write plain rgb.
+   */
+  _originalResolvedFill?: string;
 }

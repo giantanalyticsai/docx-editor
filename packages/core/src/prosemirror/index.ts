@@ -146,3 +146,6 @@ export {
   generateTOC,
 } from './commands';
 export type { TableContextInfo, BorderPreset } from './commands';
+
+/** Word `w14:paraId` → ProseMirror position before matching paragraph. */
+export { findStartPosForParaId } from './utils/findStartPosForParaId';

@@ -24,7 +24,12 @@ import type {
   TextBoxMeasure,
   TextBoxFragment,
 } from '../layout-engine/types';
-import { renderPage, renderPages, type RenderContext } from './renderPage';
+import {
+  renderPage,
+  renderPages,
+  type RenderContext,
+  type RenderPagesUpdateKind,
+} from './renderPage';
 import { renderParagraphFragment, sliceRunsForLine, renderLine } from './renderParagraph';
 import { renderFragment, FRAGMENT_CLASS_NAMES } from './renderFragment';
 import { renderTableFragment, TABLE_CLASS_NAMES } from './renderTable';
@@ -48,6 +53,7 @@ export {
   TEXTBOX_CLASS_NAMES,
   type RenderContext,
 };
+export type { RenderPagesUpdateKind };
 
 /**
  * Block lookup entry for painter

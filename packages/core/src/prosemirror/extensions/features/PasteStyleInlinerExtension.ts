@@ -156,17 +156,147 @@ function unwrapGoogleDocsStructuralB(doc: Document): void {
 }
 
 /**
- * Transform pasted HTML by inlining class-based CSS and unwrapping Google Docs wrappers.
+ * Word emits a "non-VML" fallback alongside every VML shape:
+ *   <![if !vml]><span style='position:absolute'><table>...content...</table></span><![endif]>
+ *
+ * Browsers ignore the conditional-comment guard but DO render the inner table,
+ * so ProseMirror's parseDOM picks up a phantom <table> for every textbox /
+ * callout / signature block in the source document. Strip the fallback (and
+ * the matching VML branch + any stray `<v:*>` / `<o:*>` tags) before parsing.
+ */
+function stripVmlFallback(html: string): string {
+  if (
+    !html.includes('vml') &&
+    !html.includes('mso-') &&
+    !html.includes('<o:') &&
+    !html.includes('<v:')
+  ) {
+    return html;
+  }
+  // <![if !vml]>...<![endif]> wraps the phantom-table fallback — drop the
+  // whole block (content is unwanted).
+  // <![if !supportLists]>...<![endif]> wraps the list-marker span — drop ONLY
+  // the wrapper tokens so reconstructWordLists can still see the inner
+  // <span style='mso-list:Ignore'>, otherwise the browser's bogus-comment
+  // parser eats the span when it tokenizes `<![if !supportLists]>`.
+  return html
+    .replace(/<!\[if !vml\]>[\s\S]*?<!\[endif\]>/gi, '')
+    .replace(/<!\[if gte vml[\s\S]*?<!\[endif\]>/gi, '')
+    .replace(/<!\[if !supportLists\]>/gi, '')
+    .replace(/<!\[endif\]>/gi, '')
+    .replace(/<\/?v:[^>]+>/gi, '')
+    .replace(/<\/?o:[^>]+>/gi, '');
+}
+
+/**
+ * Word emits list items as flat `<p style="mso-list:l0 level1 lfo1">` paragraphs
+ * with the marker glyph baked in as literal text inside a `<span style='mso-list:Ignore'>`
+ * wrapper. Without the original `<w:numbering>` we can't recover full list IDs,
+ * but we can detect runs of adjacent mso-list paragraphs sharing the same `lN`
+ * group, classify ordered vs unordered from the marker character, drop the
+ * literal-marker spans, and rebuild the run as a real `<ol>` / `<ul>` so PM's
+ * existing list parseDOM applies list semantics (toolbar toggles, renumbering,
+ * round-trip to DOCX).
+ */
+
+const BULLET_CHARS = new Set(['•', '·', 'o', '■', '□', '▪', '▫', '◦', '–', '-', '*']);
+
+function extractListMarker(p: HTMLParagraphElement): { marker: string; isOrdered: boolean } | null {
+  const ignoreSpan = p.querySelector<HTMLSpanElement>('span[style*="mso-list:Ignore" i]');
+  if (!ignoreSpan) return null;
+  const raw = (ignoreSpan.textContent ?? '').trim();
+  if (!raw) return null;
+  const firstChar = raw.charAt(0);
+  const isOrdered = !BULLET_CHARS.has(firstChar) && /[0-9a-zA-Z]/.test(firstChar);
+  return { marker: raw, isOrdered };
+}
+
+function stripMarkerArtifacts(p: HTMLParagraphElement): void {
+  // Remove the literal marker span (e.g. "1." or "•") and the trailing
+  // tiny-font NBSP run Word emits as the marker-to-text gap.
+  const ignoreSpan = p.querySelector<HTMLSpanElement>('span[style*="mso-list:Ignore" i]');
+  ignoreSpan?.remove();
+  // Word's marker is always followed by a span with `font:7.0pt "Times New Roman"`
+  // holding NBSPs. Drop leading whitespace-only spans so the <li> starts at content.
+  while (p.firstChild) {
+    const node = p.firstChild;
+    if (node.nodeType === Node.TEXT_NODE && !(node.textContent ?? '').trim()) {
+      p.removeChild(node);
+      continue;
+    }
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const el = node as HTMLElement;
+      const text = (el.textContent ?? '').replace(/ /g, '').trim();
+      if (text === '') {
+        p.removeChild(node);
+        continue;
+      }
+    }
+    break;
+  }
+}
+
+function getMsoListLevel(p: HTMLParagraphElement): number {
+  const style = p.getAttribute('style') ?? '';
+  const match = /mso-list\s*:\s*l\d+\s+level(\d+)/i.exec(style);
+  return match ? Math.max(0, parseInt(match[1], 10) - 1) : 0;
+}
+
+// numId 1 reserved for bullets, 2 for numbered — matches the convention used
+// by ListExtension.toggleList (see ListExtension.ts:60 `isBullet = numId === 1`).
+const BULLET_NUM_ID = 1;
+const ORDERED_NUM_ID = 2;
+
+function reconstructWordLists(doc: Document): void {
+  const paragraphs = doc.body.querySelectorAll<HTMLParagraphElement>('p[style*="mso-list" i]');
+  for (const p of paragraphs) {
+    const marker = extractListMarker(p);
+    if (!marker) continue;
+    stripMarkerArtifacts(p);
+    const ilvl = getMsoListLevel(p);
+    const numId = marker.isOrdered ? ORDERED_NUM_ID : BULLET_NUM_ID;
+    p.dataset.numId = String(numId);
+    p.dataset.numIlvl = String(ilvl);
+    p.dataset.listIsBullet = String(!marker.isOrdered);
+    // Remove the mso-list-derived margin/text-indent so the layout engine's
+    // list rendering (hanging-indent from numPr) takes over instead of the
+    // baked-in Word indentation that survives in the inline style.
+    const style = p.getAttribute('style') ?? '';
+    const cleaned = style
+      .replace(/margin-left\s*:[^;]+;?/gi, '')
+      .replace(/text-indent\s*:[^;]+;?/gi, '')
+      .replace(/mso-[^:;]+:[^;]+;?/gi, '');
+    if (cleaned.trim()) {
+      p.setAttribute('style', cleaned);
+    } else {
+      p.removeAttribute('style');
+    }
+  }
+}
+
+/**
+ * Transform pasted HTML by inlining class-based CSS, unwrapping Google Docs
+ * wrappers, stripping Word VML fallbacks, and reconstructing Word lists.
  */
 function transformPastedHTML(html: string): string {
   const hasStyleBlock = html.includes('<style');
   const hasGoogleDocsWrapper = html.includes('docs-internal-guid-');
+  const hasWordArtifacts =
+    html.includes('mso-') || html.includes('<v:') || html.includes('<o:') || html.includes('<![if');
 
-  if (!hasStyleBlock && !hasGoogleDocsWrapper) return html;
+  if (!hasStyleBlock && !hasGoogleDocsWrapper && !hasWordArtifacts) return html;
 
   try {
+    const preprocessed = hasWordArtifacts ? stripVmlFallback(html) : html;
     const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
+    const doc = parser.parseFromString(preprocessed, 'text/html');
+
+    // Reconstruct lists BEFORE inlining <style> blocks: setProperty() during
+    // style inlining causes the browser to reserialize the inline style
+    // attribute, which drops unknown properties like `mso-list:l0 level1 lfo1`.
+    if (hasWordArtifacts) {
+      reconstructWordLists(doc);
+    }
 
     if (hasStyleBlock) {
       inlineStylesFromStyleBlocks(doc);
