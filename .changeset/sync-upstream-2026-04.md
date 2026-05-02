@@ -1,6 +1,5 @@
 ---
 '@giantanalyticsai/docx-js-editor': patch
-'@giantanalyticsai/docx-core': patch
 ---
 
 Sync upstream `eigenpal/docx-editor` (Apr 2026):

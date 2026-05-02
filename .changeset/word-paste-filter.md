@@ -1,6 +1,5 @@
 ---
 '@giantanalyticsai/docx-js-editor': patch
-'@giantanalyticsai/docx-core': patch
 ---
 
 Improve Microsoft Word paste handling for two long-standing artifacts:
