@@ -1,5 +1,11 @@
 # @giantanalyticsai/docx-editor-agents
 
+## 1.2.0
+
+### Patch Changes
+
+- [#14](https://github.com/giantanalyticsai/docx-editor/pull/14) [`15ffd49`](https://github.com/giantanalyticsai/docx-editor/commit/15ffd4975313845d244ea5770b11ab796e3557d2) Thanks [@yash-giantanalytics](https://github.com/yash-giantanalytics)! - Add `DocxReviewer.removeComment(id)` — removes a comment (and its replies when called on a top-level thread) along with its anchored range markers. Closes [#252](https://github.com/giantanalyticsai/docx-editor/issues/252).
+
 ## 1.1.1
 
 ### Patch Changes
