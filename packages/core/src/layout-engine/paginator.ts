@@ -269,23 +269,36 @@ export function createPaginator(options: PaginatorOptions) {
   /**
    * Update column configuration mid-document (for section breaks).
    * Recalculates column width based on current page/margin dimensions.
-   * Sets columnRegionTop to the current cursor position so that
-   * column advancement stays below existing content (for continuous breaks).
+   *
+   * When exiting a multi-column region (e.g. 2-col → 1-col), the cursor is
+   * advanced to the bottom of the *tallest* column on the current page so
+   * the next fragment doesn't paint over content in a longer neighbouring
+   * column. When entering a multi-column region, cursorY is left as-is and
+   * becomes the new columnRegionTop so columns share a baseline.
    */
   function updateColumns(newColumns: ColumnLayout): void {
+    const previousColumnCount = columns.count;
     columns = newColumns;
     columnWidth = calculateColumnWidth(pageSize.w, margins.left, margins.right, columns);
 
-    // Update current page's column info for rendering
     const state = getCurrentState();
     state.page.columns = columns.count > 1 ? { ...columns } : undefined;
 
-    // Set column region top to current cursor position.
-    // This ensures that when advancing columns, new columns start
-    // at the same Y as where the multi-column content began (not page top).
-    columnRegionTop = state.cursorY;
+    // If exiting a multi-column region, advance cursorY past the tallest
+    // column. Without this, a shorter trailing column would let subsequent
+    // content land above the bottom of the longer column and overlap it.
+    if (previousColumnCount > 1) {
+      let maxBottom = state.cursorY;
+      for (const f of state.page.fragments) {
+        const h = (f as { height?: number }).height ?? 0;
+        const bottom = f.y + h;
+        if (bottom > maxBottom) maxBottom = bottom;
+      }
+      state.cursorY = maxBottom;
+      state.trailingSpacing = 0;
+    }
 
-    // Reset to column 0 for the new column layout
+    columnRegionTop = state.cursorY;
     state.columnIndex = 0;
   }
 
