@@ -329,7 +329,7 @@ export function layoutDocument(
 
     switch (block.kind) {
       case 'paragraph':
-        layoutParagraph(block, measure as ParagraphMeasure, paginator, contentWidth);
+        layoutParagraph(block, measure as ParagraphMeasure, paginator);
         break;
 
       case 'table':
@@ -435,8 +435,7 @@ export function layoutDocument(
 function layoutParagraph(
   block: ParagraphBlock,
   measure: ParagraphMeasure,
-  paginator: ReturnType<typeof createPaginator>,
-  contentWidth: number
+  paginator: ReturnType<typeof createPaginator>
 ): void {
   if (measure.kind !== 'paragraph') {
     throw new Error(`layoutParagraph: expected paragraph measure`);
@@ -455,7 +454,7 @@ function layoutParagraph(
       blockId: block.id,
       x: paginator.getColumnX(state.columnIndex),
       y: state.cursorY + spaceBefore,
-      width: contentWidth,
+      width: paginator.columnWidth,
       height: 0,
       fromLine: 0,
       toLine: 0,
@@ -510,7 +509,7 @@ function layoutParagraph(
       blockId: block.id,
       x: paginator.getColumnX(state.columnIndex),
       y: 0, // Will be set by addFragment
-      width: contentWidth,
+      width: paginator.columnWidth,
       height: linesHeight,
       fromLine: currentLineIndex,
       toLine: currentLineIndex + fittingLines,
