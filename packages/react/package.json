@@ -1,6 +1,6 @@
 {
   "name": "@giantanalyticsai/docx-js-editor",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "A browser-based DOCX template editor with variable insertion support",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
