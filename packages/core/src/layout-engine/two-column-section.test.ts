@@ -143,4 +143,60 @@ describe('Two-column continuous section break (NDA scenario)', () => {
       expect(f.width).toBe(expectedColumnWidth);
     }
   });
+
+  test('content after 2-col section is placed below the longest column', () => {
+    // Body section is 2-col with unbalanced columns (col 0 fills the page,
+    // col 1 has only one paragraph). After the section break back to 1-col,
+    // the next fragment must sit BELOW col 0's bottom — not at col 1's bottom,
+    // which would overlap col 0's tail content.
+
+    const blocks: FlowBlock[] = [
+      makeParagraphBlock(0, 'Front matter', 1),
+      {
+        kind: 'sectionBreak',
+        id: 1,
+        type: 'continuous',
+        columns: { count: 1, gap: 0 },
+      },
+    ];
+    const measures: Measure[] = [
+      makeParagraphMeasure([makeLine(100, 24)]),
+      { kind: 'sectionBreak' },
+    ];
+
+    // 9 body paragraphs at 100px → fills column 0 fully, spills 1 into col 1.
+    for (let i = 0; i < 9; i++) {
+      blocks.push(makeParagraphBlock(10 + i, `B${i}`, 30 + i * 5));
+      measures.push(makeParagraphMeasure([makeLine(80, 100)]));
+    }
+
+    // Exit 2-col → 1-col
+    blocks.push({
+      kind: 'sectionBreak',
+      id: 99,
+      type: 'continuous',
+      columns: { count: 2, gap: 20 },
+    });
+    measures.push({ kind: 'sectionBreak' });
+
+    // Trailing 1-col paragraph (e.g. signature heading)
+    blocks.push(makeParagraphBlock(200, 'Signature heading', 200));
+    measures.push(makeParagraphMeasure([makeLine(300, 24)]));
+
+    const layout = layoutDocument(blocks, measures, opts);
+    const fragments = layout.pages[0].fragments as ParagraphFragment[];
+    const bodyFrags = fragments.filter(
+      (f) =>
+        typeof f.blockId === 'number' && (f.blockId as number) >= 10 && (f.blockId as number) < 100
+    );
+    const trailingFrag = fragments.find((f) => f.blockId === 200)!;
+
+    // Bottom of the tallest body column
+    const maxBodyBottom = Math.max(...bodyFrags.map((f) => f.y + (f as any).height));
+
+    // Trailing fragment must start at or below maxBodyBottom (no overlap)
+    expect(trailingFrag.y).toBeGreaterThanOrEqual(maxBodyBottom);
+    expect(trailingFrag.x).toBe(MARGINS.left);
+    expect(trailingFrag.width).toBe(CONTENT_WIDTH);
+  });
 });
